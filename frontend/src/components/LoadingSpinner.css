@@ -1,0 +1,244 @@
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 70vh;
+  text-align: center;
+  padding: 0 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.loading-spinner {
+  margin-bottom: 40px;
+  position: relative;
+}
+
+.spinner-waves {
+  position: relative;
+  width: 120px;
+  height: 120px;
+}
+
+.spinner-wave {
+  position: absolute;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: #1DB954;
+  box-sizing: border-box;
+  animation: spin 1.2s linear infinite;
+}
+
+.spinner-wave:nth-child(1) {
+  width: 100%;
+  height: 100%;
+  border-top-color: #1DB954;
+  animation-delay: 0s;
+}
+
+.spinner-wave:nth-child(2) {
+  width: 80%;
+  height: 80%;
+  top: 10%;
+  left: 10%;
+  border-top-color: #20dfb0;
+  animation-delay: -0.2s;
+}
+
+.spinner-wave:nth-child(3) {
+  width: 60%;
+  height: 60%;
+  top: 20%;
+  left: 20%;
+  border-top-color: #4ADEDE;
+  animation-delay: -0.4s;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.spotify-logo-animation {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  color: #1DB954;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0.7;
+  }
+}
+
+.loading-text {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  background: linear-gradient(90deg, #1DB954, #4ADEDE);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: textShimmer 3s infinite linear;
+  background-size: 200% 100%;
+}
+
+@keyframes textShimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+.loading-subtext {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  max-width: 500px;
+  line-height: 1.6;
+  animation: fadeInUp 0.8s ease forwards;
+  animation-delay: 0.3s;
+  opacity: 0;
+}
+
+.loading-progress {
+  width: 300px;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  margin-top: 30px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 30%;
+  background: linear-gradient(90deg, #1DB954, #4ADEDE);
+  border-radius: 4px;
+  animation: progressAnim 2s ease infinite;
+}
+
+@keyframes progressAnim {
+  0% {
+    left: -30%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.loading-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 30px;
+  max-width: 600px;
+}
+
+.loading-tag {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  animation: tagFadeIn 0.5s ease forwards;
+  opacity: 0;
+}
+
+.loading-tag:nth-child(1) { animation-delay: 0.4s; }
+.loading-tag:nth-child(2) { animation-delay: 0.5s; }
+.loading-tag:nth-child(3) { animation-delay: 0.6s; }
+.loading-tag:nth-child(4) { animation-delay: 0.7s; }
+.loading-tag:nth-child(5) { animation-delay: 0.8s; }
+.loading-tag:nth-child(6) { animation-delay: 0.9s; }
+
+@keyframes tagFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .spinner-waves {
+    width: 100px;
+    height: 100px;
+  }
+  
+  .spotify-logo-animation {
+    width: 30px;
+    height: 30px;
+  }
+  
+  .loading-text {
+    font-size: 1.5rem;
+  }
+  
+  .loading-subtext {
+    font-size: 1rem;
+  }
+  
+  .loading-progress {
+    width: 250px;
+  }
+}
+
+@media (max-width: 480px) {
+  .spinner-waves {
+    width: 80px;
+    height: 80px;
+  }
+  
+  .loading-text {
+    font-size: 1.3rem;
+  }
+  
+  .loading-subtext {
+    font-size: 0.9rem;
+  }
+  
+  .loading-progress {
+    width: 200px;
+  }
+}
