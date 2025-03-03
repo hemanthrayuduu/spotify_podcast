@@ -1,0 +1,297 @@
+{
+    "Segment_2": {
+        "Age": {
+            "20~35": 0.35753259964857115,
+            "35~60": 0.3135115139184315,
+            "12~20": 0.3085175252011468
+        },
+        "Gender": {
+            "Male": 0.360769444187552,
+            "Female": 0.35540553038009803,
+            "Others": 0.28382502543234994
+        },
+        "spotify_usage_period": {
+            "1 year to 2 years": 0.2571904189401646,
+            "Less than 6 months": 0.2537686118560991,
+            "6 months to 1 year": 0.24489040969203738
+        },
+        "spotify_listening_device": {
+            "Smart speakers or voice assistants": 0.23407010080458707,
+            "Computer or laptop": 0.23286784426153703,
+            "Smartphone": 0.22204753537408675
+        },
+        "spotify_subscription_plan": {
+            "Free (ad-supported)": 0.3070378248404698,
+            "Student Plan-Rs 59/month": 0.2161287339313789,
+            "Family Plan-Rs 179/month": 0.21474151484324425
+        },
+        "premium_sub_willingness": {
+            "No": 0.5238139276796449,
+            "Yes": 0.47618607232035515
+        },
+        "preffered_premium_plan": {
+            "None": 0.2625543327476186,
+            "Student Plan-Rs 59/month": 0.23971145842966798,
+            "Family Plan-Rs 179/month": 0.23453250716729862
+        },
+        "preferred_listening_content": {
+            "Podcast": 1.0
+        },
+        "fav_music_genre": {
+            "Melody": 0.17848885600665865,
+            "Pop": 0.162489595856839,
+            "Rap": 0.16110237676870434
+        },
+        "music_time_slot": {
+            "Night": 0.2688430592804957,
+            "Afternoon": 0.2683806529177841,
+            "Morning": 0.246277628780172
+        },
+        "music_Influencial_mood": {
+            "Relaxation and stress relief": 0.32192730971978173,
+            "Sadness or melancholy": 0.30195135485064273,
+            "Social gatherings or parties": 0.2916859335984463
+        },
+        "music_lis_frequency": {
+            "Daily": 0.17488208637750854,
+            "Never": 0.17478960510496624,
+            "Several times a week": 0.16739110330158144
+        },
+        "music_expl_method": {
+            "Playlists": 0.447516877832239,
+            "Recommendations": 0.4261537038749653,
+            "recommendations": 0.029501525940996948
+        },
+        "pod_lis_frequency": {
+            "Never": 0.22038287246832516,
+            "Rarely": 0.2200129473781559,
+            "Once a week": 0.19115879034495514
+        },
+        "fav_pod_genre": {
+            "Lifestyle and Health": 0.2015166928696939,
+            "None": 0.19337834088597058,
+            "Sports": 0.1853324701747896
+        },
+        "preffered_pod_format": {
+            "None": 0.25404605567372607,
+            "Story telling": 0.25302876167576066,
+            "Interview": 0.2399889022472949
+        },
+        "pod_host_preference": {
+            "Both": 0.27023027836863034,
+            "None": 0.24960695459169518,
+            "Well known individuals": 0.24600018496254508
+        },
+        "preffered_pod_duration": {
+            "None": 0.24942199204661056,
+            "Medium (15-30 minutes)": 0.21538888375104043,
+            "Short (less than 15 minutes)": 0.20974752612595948
+        },
+        "pod_variety_satisfaction": {
+            "Satisfied": 0.23499491353001017,
+            "Dissatisfied": 0.17950615000462405,
+            "Very Satisfied": 0.1790437436419125
+        },
+        "age_numeric": {
+            "mean": 30.621601208459214,
+            "median": 28.0
+        }
+    },
+    "Segment_1": {
+        "Age": {
+            "20~35": 0.4021164021164021,
+            "12~20": 0.3276731881383044,
+            "60+": 0.10483573274270949
+        },
+        "Gender": {
+            "Female": 0.4704072843607727,
+            "Male": 0.43792297280669373,
+            "Others": 0.09166974283253353
+        },
+        "spotify_usage_period": {
+            "Less than 6 months": 0.2617201919527501,
+            "6 months to 1 year": 0.2547065337763012,
+            "More than 2 years": 0.24178663713547435
+        },
+        "spotify_listening_device": {
+            "Smart speakers or voice assistants": 0.14224190968377015,
+            "Smartphone": 0.12710717361880153,
+            "Computer or laptop": 0.08834748369632091
+        },
+        "spotify_subscription_plan": {
+            "Free (ad-supported)": 0.584963701242771,
+            "Premium (paid subscription)": 0.2547065337763012,
+            "Student Plan-Rs 59/month": 0.055247938968869204
+        },
+        "premium_sub_willingness": {
+            "No": 0.6345514950166113,
+            "Yes": 0.3654485049833887
+        },
+        "preffered_premium_plan": {
+            "None": 0.33456379968007877,
+            "Student Plan-Rs 59/month": 0.18038636643287806,
+            "Family Plan-Rs 179/month": 0.17411098806447645
+        },
+        "preferred_listening_content": {
+            "Music": 0.8826135105204873,
+            "Podcast": 0.11738648947951273
+        },
+        "fav_music_genre": {
+            "Melody": 0.22579057462778393,
+            "Rap": 0.16463639719453674,
+            "Pop": 0.16205241786637137
+        },
+        "music_time_slot": {
+            "Night": 0.5711824781592223,
+            "Morning": 0.25827488618186295,
+            "Afternoon": 0.1370739510274394
+        },
+        "music_Influencial_mood": {
+            "Relaxation and stress relief": 0.21754645010458964,
+            "Sadness or melancholy": 0.21606989048849515,
+            "Uplifting and motivational": 0.13928879045158116
+        },
+        "music_lis_frequency": {
+            "leisure time": 0.1583610188261351,
+            "While Traveling": 0.1326442721791559,
+            "Several times a week": 0.07628891349821583
+        },
+        "music_expl_method": {
+            "Playlists": 0.23735695828719083,
+            "recommendations": 0.14864033468684631,
+            "Recommendations": 0.10741971207087486
+        },
+        "pod_lis_frequency": {
+            "Rarely": 0.3195521102497847,
+            "Never": 0.2440014765596161,
+            "Several times a week": 0.19478282268979943
+        },
+        "fav_pod_genre": {
+            "Comedy": 0.23821828472991263,
+            "Lifestyle and Health": 0.16180632459702227,
+            "None": 0.15996062507690414
+        },
+        "preffered_pod_format": {
+            "None": 0.26651901070505724,
+            "Story telling": 0.2655346376276609,
+            "Interview": 0.1976128952873139
+        },
+        "pod_host_preference": {
+            "Both": 0.3231204626553464,
+            "None": 0.27648578811369506,
+            "Well known individuals": 0.2336655592469546
+        },
+        "preffered_pod_duration": {
+            "Shorter": 0.31241540543866125,
+            "None": 0.2330503260735819,
+            "Both": 0.17583364094992002
+        },
+        "pod_variety_satisfaction": {
+            "Ok": 0.3620031992125015,
+            "Satisfied": 0.35019072228374554,
+            "Very Satisfied": 0.09339239571797711
+        },
+        "age_numeric": {
+            "mean": 24.611369990680334,
+            "median": 28.0
+        }
+    },
+    "Segment_0": {
+        "Age": {
+            "20~35": 0.3721632313137622,
+            "35~60": 0.3671663543618572,
+            "12~20": 0.24692900270664167
+        },
+        "Gender": {
+            "Female": 0.3641474078700812,
+            "Male": 0.3594628357276702,
+            "Others": 0.2763897564022486
+        },
+        "spotify_usage_period": {
+            "More than 2 years": 0.2615032271496981,
+            "1 year to 2 years": 0.24713720591297106,
+            "6 months to 1 year": 0.24692900270664167
+        },
+        "spotify_listening_device": {
+            "Smart speakers or voice assistants": 0.23068915261295023,
+            "Computer or laptop": 0.2301686445971268,
+            "Smartphone": 0.21840516343951696
+        },
+        "spotify_subscription_plan": {
+            "Free (ad-supported)": 0.3336456381428274,
+            "Student Plan-Rs 59/month": 0.19935457006037893,
+            "Individual Plan- Rs 119/month": 0.19914636685404954
+        },
+        "premium_sub_willingness": {
+            "No": 0.5418488444722048,
+            "Yes": 0.4581511555277951
+        },
+        "preffered_premium_plan": {
+            "None": 0.26181553195919216,
+            "Student Plan-Rs 59/month": 0.24120341453258382,
+            "Family Plan-Rs 179/month": 0.22704559650218614
+        },
+        "preferred_listening_content": {
+            "Music": 1.0
+        },
+        "fav_music_genre": {
+            "Melody": 0.18634186966479283,
+            "Rap": 0.1600041640641266,
+            "Pop": 0.150843222985634
+        },
+        "music_time_slot": {
+            "Afternoon": 0.32115344576306476,
+            "Morning": 0.2428690401832188,
+            "Night": 0.2237143452009161
+        },
+        "music_Influencial_mood": {
+            "Relaxation and stress relief": 0.33312513012700395,
+            "Sadness or melancholy": 0.29918800749531543,
+            "Social gatherings or parties": 0.2596293982927337
+        },
+        "music_lis_frequency": {
+            "Daily": 0.1905059337913804,
+            "Never": 0.18425983760149905,
+            "Once a week": 0.14928169893816365
+        },
+        "music_expl_method": {
+            "Playlists": 0.43514470122839893,
+            "Recommendations": 0.39808453050176973,
+            "recommendations": 0.03758067874245263
+        },
+        "pod_lis_frequency": {
+            "Never": 0.22402665001041017,
+            "Rarely": 0.22069539870914012,
+            "Once a week": 0.19477409952113262
+        },
+        "fav_pod_genre": {
+            "None": 0.20861961274203622,
+            "Technology": 0.19956277326670832,
+            "Sports": 0.1930043722673329
+        },
+        "preffered_pod_format": {
+            "Story telling": 0.26004580470539246,
+            "None": 0.25338330210285237,
+            "Interview": 0.22600458047053926
+        },
+        "pod_host_preference": {
+            "Both": 0.27795128044971895,
+            "None": 0.25390381011867585,
+            "Well known individuals": 0.23974599208827815
+        },
+        "preffered_pod_duration": {
+            "None": 0.2422444305642307,
+            "Short (less than 15 minutes)": 0.2051842598376015,
+            "Long (more than 30 minutes)": 0.20018738288569643
+        },
+        "pod_variety_satisfaction": {
+            "Satisfied": 0.23152196543826775,
+            "Very Satisfied": 0.17145534041224234,
+            "Dissatisfied": 0.16968561315844263
+        },
+        "age_numeric": {
+            "mean": 32.441207515305045,
+            "median": 28.0
+        }
+    }
+}
