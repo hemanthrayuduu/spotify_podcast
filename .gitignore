@@ -24,4 +24,7 @@ yarn-error.log
 
 # Specific files to exclude
 roadmap.md
-IMPROVEMENTS.md 
+IMPROVEMENTS.md
+
+# Explicitly include models
+!backend/models/ 
