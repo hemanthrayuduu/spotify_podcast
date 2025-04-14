@@ -7,6 +7,9 @@ import Library from './pages/Library';
 import About from './pages/About';
 import './App.css';
 
+// Use environment variable for API URL with localhost as fallback
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 function App() {
   const [recommendations, setRecommendations] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -14,7 +17,7 @@ function App() {
   const handleSubmit = async (formData) => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/recommend', {
+      const response = await fetch(`${API_URL}/recommend`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
