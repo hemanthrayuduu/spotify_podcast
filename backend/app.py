@@ -46,27 +46,69 @@ app.add_middleware(
 # Load ML models
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 
+# Initialize default values
+kmeans_model = None
+scaler = None
+label_encoders = None
+valid_features = None
+segment_profiles = None
+
 try:
+    # Ensure models directory exists
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    
     # Load the KMeans model
-    kmeans_model = pickle.load(open(os.path.join(MODEL_DIR, "kmeans_model.pkl"), "rb"))
+    kmeans_model_path = os.path.join(MODEL_DIR, "kmeans_model.pkl")
+    if os.path.exists(kmeans_model_path):
+        kmeans_model = pickle.load(open(kmeans_model_path, "rb"))
     
     # Load the scaler
-    scaler = pickle.load(open(os.path.join(MODEL_DIR, "scaler.pkl"), "rb"))
+    scaler_path = os.path.join(MODEL_DIR, "scaler.pkl")
+    if os.path.exists(scaler_path):
+        scaler = pickle.load(open(scaler_path, "rb"))
     
     # Load label encoders
-    label_encoders = pickle.load(open(os.path.join(MODEL_DIR, "label_encoders.pkl"), "rb"))
+    encoders_path = os.path.join(MODEL_DIR, "label_encoders.pkl")
+    if os.path.exists(encoders_path):
+        label_encoders = pickle.load(open(encoders_path, "rb"))
     
     # Load valid features
-    valid_features = pickle.load(open(os.path.join(MODEL_DIR, "valid_features.pkl"), "rb"))
+    features_path = os.path.join(MODEL_DIR, "valid_features.pkl")
+    if os.path.exists(features_path):
+        valid_features = pickle.load(open(features_path, "rb"))
     
     # Load segment profiles
-    with open(os.path.join(MODEL_DIR, "segment_profiles.json"), "r") as f:
-        segment_profiles = json.load(f)
+    segment_path = os.path.join(MODEL_DIR, "segment_profiles.json")
+    if os.path.exists(segment_path):
+        with open(segment_path, "r") as f:
+            segment_profiles = json.load(f)
         
-    logger.info("All models and data loaded successfully.")
+    logger.info("Models and data loaded successfully.")
 except Exception as e:
     logger.error(f"Error loading models: {str(e)}")
-    raise
+    # Don't raise an exception, continue with defaults
+
+# Check if all required models are available
+MODELS_AVAILABLE = all([kmeans_model, scaler, valid_features, segment_profiles])
+if not MODELS_AVAILABLE:
+    logger.warning("Some or all models are not available. Using fallback recommendations.")
+    
+    # Create simple fallback segment profiles if needed
+    if not segment_profiles:
+        segment_profiles = {
+            "Casual Listener": {
+                "segment_description": "You enjoy listening to podcasts occasionally for entertainment and to stay informed.",
+                "top_genres": ["Comedy", "News & Politics", "Entertainment"]
+            },
+            "Knowledge Seeker": {
+                "segment_description": "You use podcasts primarily as a source of learning and intellectual growth.",
+                "top_genres": ["Educational", "Science & Technology", "History"]
+            },
+            "Daily Consumer": {
+                "segment_description": "Podcasts are a daily part of your routine, keeping you company during commutes or activities.",
+                "top_genres": ["News & Politics", "Daily Updates", "Comedy"]
+            }
+        }
 
 # Initialize Anthropic client
 try:
@@ -140,6 +182,11 @@ def prepare_features(preferences: Dict[str, Any]) -> np.ndarray:
     """
     Prepare user input for prediction.
     """
+    # If models are not available, return a dummy feature vector
+    if not MODELS_AVAILABLE or not valid_features or not scaler:
+        # Return a simple dummy vector that will be compatible with fallback logic
+        return np.array([[0]])
+        
     # Map user inputs to feature vector
     features = {}
     
@@ -457,15 +504,29 @@ async def recommend_podcasts(request: Request):
                 'employment': body.get('employment', None)
             }
             
-            # Prepare the features
-            user_features = prepare_features(preferences)
-            
-            # Predict the segment
-            segment_id = kmeans_model.predict(user_features)[0]
-            segment_name = f"Segment_{segment_id}"
-            
-            # Get the segment profile
-            user_segment = segment_profiles.get(segment_name, {})
+            # Check if ML models are available
+            if MODELS_AVAILABLE:
+                # Prepare the features
+                user_features = prepare_features(preferences)
+                
+                # Predict the segment
+                segment_id = kmeans_model.predict(user_features)[0]
+                segment_name = f"Segment_{segment_id}"
+                
+                # Get the segment profile
+                user_segment = segment_profiles.get(segment_name, {})
+            else:
+                # Fallback when models aren't available
+                # Assign user to a basic segment based on their preferences
+                preferred_genres = preferences['podcast_content']
+                
+                # Simple logic to assign a segment
+                if any(genre in ["Educational", "Science & Technology", "History"] for genre in preferred_genres):
+                    user_segment = segment_profiles.get("Knowledge Seeker", {})
+                elif any(genre in ["News & Politics", "Business & Finance"] for genre in preferred_genres):
+                    user_segment = segment_profiles.get("Daily Consumer", {})
+                else:
+                    user_segment = segment_profiles.get("Casual Listener", {})
             
             # Generate recommendations
             recommendations = generate_podcast_recommendations(user_segment, preferences)
