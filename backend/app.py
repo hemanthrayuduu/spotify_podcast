@@ -15,6 +15,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi import status
 from fastapi import Request
 from pydantic import ValidationError
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -111,48 +112,103 @@ if not MODELS_AVAILABLE:
         }
 
 # Initialize Anthropic client
-try:
+MAX_RETRIES = 3
+RETRY_DELAY = 1  # seconds
+DEFAULT_TIMEOUT = 30  # seconds
+ALLOWED_MODELS = ["claude-3-haiku-20240307", "claude-3-sonnet-20240229", "claude-3-opus-20240229"]
+
+def init_anthropic_client():
+    """Initialize the Anthropic client with retries and proper error handling.
+    
+    Returns:
+        Optional[anthropic.Anthropic]: Initialized Anthropic client or None if initialization fails
+    """
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
     if not anthropic_api_key:
         logger.warning("ANTHROPIC_API_KEY not found in environment variables")
-        client = None
-    else:
-        logger.info("Attempting to initialize Anthropic client...")
+        return None
+
+    logger.info("Attempting to initialize Anthropic client...")
+    
+    # Validate model availability
+    model = os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
+    if model not in ALLOWED_MODELS:
+        logger.warning(f"Invalid model {model}. Falling back to claude-3-haiku-20240307")
+        model = "claude-3-haiku-20240307"
+    
+    for attempt in range(MAX_RETRIES):
         try:
-            # Initialize with basic configuration
             client = anthropic.Anthropic(
-                api_key=anthropic_api_key
+                api_key=anthropic_api_key,
+                timeout=DEFAULT_TIMEOUT,
+                max_retries=2  # Built-in retry mechanism for transient errors
             )
             
             # Test the client with a simple message
-            response = client.beta.messages.create(
-                model="claude-3-haiku-20240307",
+            response = client.messages.create(
+                model=model,
                 max_tokens=10,
-                messages=[
-                    {"role": "user", "content": "Hello"}
-                ]
+                temperature=0,  # Use deterministic output for testing
+                messages=[{"role": "user", "content": "Test"}]
             )
-            logger.info("Anthropic client test successful")
-            logger.info("Anthropic client initialized successfully.")
+            
+            if not response or not response.content:
+                logger.error("Empty response from Anthropic API test")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY)
+                    continue
+                return None
+                
+            logger.info(f"Anthropic client initialized and tested successfully with model {model}")
+            return client
+            
+        except anthropic.RateLimitError as rate_err:
+            logger.warning(f"Rate limit hit (attempt {attempt + 1}/{MAX_RETRIES}): {str(rate_err)}")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (2 ** attempt))  # True exponential backoff
+                continue
+            logger.error("Max retries reached for rate limit")
+            return None
+            
         except anthropic.APIError as api_err:
             logger.error(f"Anthropic API Error: {str(api_err)}")
-            client = None
+            if "model not found" in str(api_err).lower():
+                logger.error(f"Model {model} not available. Please check model name.")
+            return None
+            
         except anthropic.APIConnectionError as conn_err:
             logger.error(f"Anthropic Connection Error: {str(conn_err)}")
-            client = None
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (2 ** attempt))  # True exponential backoff
+                continue
+            logger.error("Max retries reached for connection error")
+            return None
+            
         except anthropic.AuthenticationError as auth_err:
-            logger.error(f"Anthropic Authentication Error: {str(auth_err)}")
-            client = None
+            logger.error(f"Anthropic Authentication Error: Invalid API key or permissions")
+            return None
+            
+        except TimeoutError:
+            logger.error(f"Timeout during client test (attempt {attempt + 1}/{MAX_RETRIES})")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY)
+                continue
+            return None
+            
         except Exception as e:
             logger.error(f"Unexpected error initializing Anthropic client: {str(e)}")
-            client = None
+            return None
+
+    return None
+
+# Initialize the client using the new function
+try:
+    client = init_anthropic_client()
+    if client is None:
+        logger.warning("Anthropic client not available - recommendations will use fallback mode")
 except Exception as e:
     logger.error(f"Error in Anthropic client setup: {str(e)}")
     client = None
-
-# If client initialization failed, log a warning with more details
-if client is None:
-    logger.warning("Anthropic client not available - recommendations will use fallback mode")
 
 # Input validation model
 class UserPreferences(BaseModel):
@@ -396,7 +452,7 @@ Focus on real, high-quality podcasts that genuinely match the user's interests. 
 
     try:
         # Generate recommendations using Claude
-        response = client.beta.messages.create(
+        response = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=1000,
             messages=[
