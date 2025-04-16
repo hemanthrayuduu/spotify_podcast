@@ -119,9 +119,26 @@ try:
     else:
         logger.info("Attempting to initialize Anthropic client...")
         try:
-            client = anthropic.Anthropic(
-                api_key=anthropic_api_key,
-            )
+            # Check if we're running on Render
+            is_render = os.getenv('RENDER') == 'true'
+            
+            if is_render:
+                # Render-specific initialization
+                import httpx
+                # Create a custom httpx client without proxy settings
+                http_client = httpx.Client(
+                    timeout=60.0,
+                    proxies=None,
+                    verify=True
+                )
+                client = anthropic.Anthropic(
+                    api_key=anthropic_api_key,
+                    http_client=http_client
+                )
+            else:
+                # Local initialization
+                client = anthropic.Anthropic(api_key=anthropic_api_key)
+            
             # Test the client with a simple message
             response = client.messages.create(
                 model="claude-3-haiku-20240307",
