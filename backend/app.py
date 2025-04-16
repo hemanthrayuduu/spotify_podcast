@@ -131,19 +131,19 @@ try:
                     proxies=None,
                     verify=True
                 )
-                client = anthropic.Anthropic(
+                client = anthropic.Client(
                     api_key=anthropic_api_key,
                     http_client=http_client
                 )
             else:
                 # Local initialization
-                client = anthropic.Anthropic(api_key=anthropic_api_key)
+                client = anthropic.Client(api_key=anthropic_api_key)
             
-            # Test the client with a simple message
-            response = client.messages.create(
-                model="claude-3-haiku-20240307",
-                max_tokens=10,
-                messages=[{"role": "user", "content": "Hello"}]
+            # Test the client with a simple completion
+            response = client.completion(
+                prompt=f"{anthropic.HUMAN_PROMPT} Hello{anthropic.AI_PROMPT}",
+                model="claude-2",
+                max_tokens_to_sample=10,
             )
             logger.info("Anthropic client test successful")
             logger.info("Anthropic client initialized successfully.")
@@ -409,16 +409,15 @@ Focus on real, high-quality podcasts that genuinely match the user's interests. 
 
     try:
         # Generate recommendations using Claude
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=1000,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+        response = client.completion(
+            prompt=f"{anthropic.HUMAN_PROMPT}{prompt}{anthropic.AI_PROMPT}",
+            model="claude-2",
+            max_tokens_to_sample=1000,
+            stop_sequences=[anthropic.HUMAN_PROMPT]
         )
         
         # Extract JSON from response
-        content = response.content[0].text
+        content = response.completion
         try:
             # Try to extract JSON from the response
             import re
