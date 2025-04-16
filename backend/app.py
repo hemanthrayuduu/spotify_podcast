@@ -119,31 +119,18 @@ try:
     else:
         logger.info("Attempting to initialize Anthropic client...")
         try:
-            # Check if we're running on Render
-            is_render = os.getenv('RENDER') == 'true'
+            # Initialize with basic configuration
+            client = anthropic.Anthropic(
+                api_key=anthropic_api_key
+            )
             
-            if is_render:
-                # Render-specific initialization
-                import httpx
-                # Create a custom httpx client without proxy settings
-                http_client = httpx.Client(
-                    timeout=60.0,
-                    proxies=None,
-                    verify=True
-                )
-                client = anthropic.Client(
-                    api_key=anthropic_api_key,
-                    http_client=http_client
-                )
-            else:
-                # Local initialization
-                client = anthropic.Client(api_key=anthropic_api_key)
-            
-            # Test the client with a simple completion
-            response = client.completion(
-                prompt=f"{anthropic.HUMAN_PROMPT} Hello{anthropic.AI_PROMPT}",
-                model="claude-2",
-                max_tokens_to_sample=10,
+            # Test the client with a simple message
+            response = client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=10,
+                messages=[
+                    {"role": "user", "content": "Hello"}
+                ]
             )
             logger.info("Anthropic client test successful")
             logger.info("Anthropic client initialized successfully.")
@@ -409,15 +396,16 @@ Focus on real, high-quality podcasts that genuinely match the user's interests. 
 
     try:
         # Generate recommendations using Claude
-        response = client.completion(
-            prompt=f"{anthropic.HUMAN_PROMPT}{prompt}{anthropic.AI_PROMPT}",
-            model="claude-2",
-            max_tokens_to_sample=1000,
-            stop_sequences=[anthropic.HUMAN_PROMPT]
+        response = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=1000,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
         )
         
         # Extract JSON from response
-        content = response.completion
+        content = response.content[0].text
         try:
             # Try to extract JSON from the response
             import re
