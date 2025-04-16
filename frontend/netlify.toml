@@ -1,11 +1,17 @@
 [build]
   base = "frontend"
-  command = "npm ci && npm run build"
+  command = """
+    npm cache clean --force && \
+    rm -rf node_modules && \
+    npm install --no-audit --prefer-offline && \
+    CI=false npm run build
+  """
   publish = "build"
 
 [build.environment]
-  NODE_VERSION = "18"
-  NPM_VERSION = "9"
+  NODE_VERSION = "16.14.0"
+  NPM_VERSION = "8.5.0"
+  CI = "false"
 
 # Handle SPA routing
 [[redirects]]
