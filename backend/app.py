@@ -125,7 +125,7 @@ try:
             )
             
             # Test the client with a simple message
-            response = client.messages.create(
+            response = client.beta.messages.create(
                 model="claude-3-haiku-20240307",
                 max_tokens=10,
                 messages=[
@@ -396,7 +396,7 @@ Focus on real, high-quality podcasts that genuinely match the user's interests. 
 
     try:
         # Generate recommendations using Claude
-        response = client.messages.create(
+        response = client.beta.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=1000,
             messages=[
