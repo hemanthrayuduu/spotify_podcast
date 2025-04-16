@@ -115,12 +115,40 @@ try:
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
     if not anthropic_api_key:
         logger.warning("ANTHROPIC_API_KEY not found in environment variables")
-    
-    client = anthropic.Anthropic(api_key=anthropic_api_key)
-    logger.info("Anthropic client initialized successfully.")
+        client = None
+    else:
+        logger.info("Attempting to initialize Anthropic client...")
+        try:
+            client = anthropic.Anthropic(
+                api_key=anthropic_api_key,
+            )
+            # Test the client with a simple message
+            response = client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Hello"}]
+            )
+            logger.info("Anthropic client test successful")
+            logger.info("Anthropic client initialized successfully.")
+        except anthropic.APIError as api_err:
+            logger.error(f"Anthropic API Error: {str(api_err)}")
+            client = None
+        except anthropic.APIConnectionError as conn_err:
+            logger.error(f"Anthropic Connection Error: {str(conn_err)}")
+            client = None
+        except anthropic.AuthenticationError as auth_err:
+            logger.error(f"Anthropic Authentication Error: {str(auth_err)}")
+            client = None
+        except Exception as e:
+            logger.error(f"Unexpected error initializing Anthropic client: {str(e)}")
+            client = None
 except Exception as e:
-    logger.error(f"Error initializing Anthropic client: {str(e)}")
+    logger.error(f"Error in Anthropic client setup: {str(e)}")
     client = None
+
+# If client initialization failed, log a warning with more details
+if client is None:
+    logger.warning("Anthropic client not available - recommendations will use fallback mode")
 
 # Input validation model
 class UserPreferences(BaseModel):
