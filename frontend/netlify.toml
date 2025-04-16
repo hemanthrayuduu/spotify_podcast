@@ -1,5 +1,6 @@
 [build]
-  command = "npm run build"
+  base = "frontend"
+  command = "CI= npm install && npm run build"
   publish = "build"
 
 # Handle SPA routing
