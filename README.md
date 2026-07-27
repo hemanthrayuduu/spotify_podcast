@@ -40,8 +40,11 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-# Create .env file with ANTHROPIC_API_KEY=your_api_key
-uvicorn app:app --reload
+# Create .env file with ANTHROPIC_API_KEY=your_api_key (see .env.example)
+uvicorn app.main:app --reload
+
+# To regenerate the ML model artifacts from the survey data:
+python train.py
 ```
 
 ### Frontend Setup
