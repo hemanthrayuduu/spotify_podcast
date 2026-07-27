@@ -22,7 +22,7 @@ async def recommend_podcasts(
     preferences: UserPreferences, request: Request
 ) -> RecommendationResponse:
     bundle = request.app.state.bundle
-    client = request.app.state.anthropic_client
+    client = request.app.state.llm_client
     prefs = preferences.model_dump()
     logger.info(f"Received recommendation request for age={prefs['age']}")
 
@@ -32,7 +32,7 @@ async def recommend_podcasts(
         user_segment = bundle.segment_profiles.get(f"Segment_{segment_id}", {})
 
         recommendations = await generate_podcast_recommendations(
-            client, prefs, user_segment, settings.anthropic_model
+            client, prefs, user_segment, settings.groq_model
         )
         return RecommendationResponse(
             segment_profile=user_segment, recommendations=recommendations

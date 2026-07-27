@@ -14,7 +14,7 @@ const About = () => {
         <h3><i className="fas fa-lightbulb"></i> How it works</h3>
         <p>
           Tell us about your listening habits and interests. A machine learning model groups you
-          with similar listeners to understand your profile, and Claude AI uses that profile
+          with similar listeners to understand your profile, and an LLM uses that profile
           together with your preferences to suggest podcasts you're likely to enjoy.
         </p>
       </section>
@@ -25,7 +25,7 @@ const About = () => {
           <li><span>Frontend</span> React, React Router</li>
           <li><span>Backend</span> FastAPI (Python)</li>
           <li><span>ML</span> scikit-learn KMeans segmentation</li>
-          <li><span>AI</span> Claude for recommendation generation</li>
+          <li><span>AI</span> Llama (open-source, via Groq) for recommendation generation</li>
         </ul>
       </section>
 
