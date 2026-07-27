@@ -1,0 +1,24 @@
+# Render blueprint for the backend API.
+# Apply via Render → Blueprints (New Blueprint Instance) pointing at this repo,
+# or use it as the reference for the existing service's settings.
+services:
+  - type: web
+    name: spotify-podcast-recommender
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # pandas 2.0.1 / numpy 2.2.4 ship 3.11 wheels; keep Render on 3.11.
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # Secret — set the value in the Render dashboard (never commit it).
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-haiku-4-5
+      # Lock CORS to the deployed frontend origin.
+      - key: ALLOWED_ORIGINS
+        value: https://spotify-podcast-recommender.netlify.app
