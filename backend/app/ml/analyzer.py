@@ -1,12 +1,13 @@
-import numpy as np
-import pandas as pd
-import pickle
-import os
 import json
 import logging
-from typing import Dict, List, Tuple, Any, Optional
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+import os
+import pickle
+from typing import Any, Dict, Tuple
+
+import numpy as np
+import pandas as pd
 from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 

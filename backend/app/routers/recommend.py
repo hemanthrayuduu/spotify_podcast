@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.ml.features import prepare_features
 from app.schemas.recommendation import RecommendationResponse, UserPreferences
 from app.services.llm import generate_podcast_recommendations
@@ -16,6 +17,7 @@ router = APIRouter()
 
 
 @router.post("/recommend", response_model=RecommendationResponse)
+@limiter.limit(settings.rate_limit)
 async def recommend_podcasts(
     preferences: UserPreferences, request: Request
 ) -> RecommendationResponse:

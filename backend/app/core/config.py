@@ -9,7 +9,11 @@ _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # protected_namespaces=() avoids a false-positive warning on `model_dir`
+    # (pydantic reserves the `model_` prefix by default).
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", protected_namespaces=()
+    )
 
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5"
