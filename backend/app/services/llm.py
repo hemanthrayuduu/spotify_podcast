@@ -1,70 +1,39 @@
-"""Claude-backed podcast recommendation generation.
+"""Groq-backed podcast recommendation generation.
 
 Single source of truth for turning a user's preferences + their KMeans
-segment profile into 5 podcast recommendations. Uses the async Anthropic
-client and forced tool use so the model returns a guaranteed-shape payload
-instead of free-text JSON we have to scrape with a regex.
+segment profile into 5 podcast recommendations. Uses Groq (an open-source
+Llama model) in JSON mode so the model returns a structured payload instead
+of free-text we have to scrape.
 """
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
-import anthropic
+from groq import AsyncGroq
 
 logger = logging.getLogger(__name__)
 
-# Tool the model is forced to call. Its input schema *is* the response
-# contract, which removes the old regex/JSON-parsing fallback entirely.
-SUBMIT_RECOMMENDATIONS_TOOL = {
-    "name": "submit_recommendations",
-    "description": "Submit exactly 5 podcast recommendations tailored to the user.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "recommendations": {
-                "type": "array",
-                "description": "Exactly 5 real, high-quality podcasts.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string", "description": "Podcast name"},
-                        "creator": {"type": "string", "description": "Creator or host"},
-                        "description": {
-                            "type": "string",
-                            "description": "Brief, engaging description (1-2 sentences)",
-                        },
-                        "format": {
-                            "type": "string",
-                            "description": "Format type (Interview, Narrative, Educational, etc.)",
-                        },
-                        "duration": {"type": "string", "description": "Typical episode length"},
-                        "language": {"type": "string", "description": "Main language"},
-                        "region": {"type": "string", "description": "Content region focus"},
-                        "reason": {
-                            "type": "string",
-                            "description": "One-sentence personalized reason this matches the user",
-                        },
-                    },
-                    "required": [
-                        "name",
-                        "creator",
-                        "description",
-                        "format",
-                        "duration",
-                        "language",
-                        "region",
-                        "reason",
-                    ],
-                },
-            }
-        },
-        "required": ["recommendations"],
-    },
-}
+SYSTEM_PROMPT = (
+    "You are a podcast recommendation expert. You always respond with a single "
+    "valid JSON object and nothing else."
+)
+
+# The exact fields every recommendation must contain (mirrors the API's
+# Recommendation schema, minus `link` which the server fills in).
+_REQUIRED_FIELDS = (
+    "name",
+    "creator",
+    "description",
+    "format",
+    "duration",
+    "language",
+    "region",
+    "reason",
+)
 
 
 def _build_prompt(user_prefs: Dict[str, Any], segment_profile: Dict[str, Any]) -> str:
-    """Render the user profile + segment into the model prompt."""
     music_genres = ", ".join(user_prefs.get("music_genre") or ["Various"])
     pod_content_topics = ", ".join(user_prefs.get("podcast_content") or ["Various"])
 
@@ -72,7 +41,7 @@ def _build_prompt(user_prefs: Dict[str, Any], segment_profile: Dict[str, Any]) -
     top_pod_genre = next(iter(segment_profile.get("fav_pod_genre", {})), "Various")
     segment_age = segment_profile.get("age_numeric", {}).get("mean", 30)
 
-    prompt = f"""You are a podcast recommendation expert. Based on the user profile and preferences, suggest 5 podcasts they would enjoy.
+    prompt = f"""Based on the user profile and preferences below, suggest 5 real, high-quality podcasts they would enjoy. Be specific and personalized, not generic.
 
 USER INFORMATION:
 - Age group: {user_prefs.get("age", "25-34")}
@@ -85,65 +54,93 @@ USER INFORMATION:
 - Region of interest: {user_prefs.get("region", "Global")}
 - Current listening mood: {user_prefs.get("listening_mood", "")}
 """
-
     if user_prefs.get("podcasts_enjoyed"):
         prompt += f"- Podcasts already enjoyed: {user_prefs['podcasts_enjoyed']}\n"
 
-    prompt += f"""
-LISTENER SEGMENT PROFILE:
-- Top music genre in segment: {top_music_genre}
-- Top podcast genre in segment: {top_pod_genre}
-- Age demographics: {segment_age} (average)
-
-Focus on real, high-quality podcasts that genuinely match the user's interests. Be specific, not generic. Call the submit_recommendations tool with exactly 5 recommendations.
+    prompt += """
+Respond with a JSON object of this exact shape:
+{
+  "recommendations": [
+    {
+      "name": "Podcast name",
+      "creator": "Creator or host",
+      "description": "Brief, engaging 1-2 sentence description",
+      "format": "Format type (Interview, Narrative, Educational, etc.)",
+      "duration": "Typical episode length",
+      "language": "Main language",
+      "region": "Content region focus",
+      "reason": "One-sentence personalized reason this matches the user"
+    }
+  ]
+}
+The "recommendations" array must contain exactly 5 items.
 """
+    prompt += f"\n(Segment context — top music genre: {top_music_genre}, top podcast genre: {top_pod_genre}, average age: {segment_age}.)\n"
     return prompt
 
 
-def _add_links(recommendations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Attach a Google search link to each recommendation."""
-    for rec in recommendations:
-        name = rec.get("name", "").replace(" ", "+")
-        creator = rec.get("creator", "").replace(" ", "+")
-        rec["link"] = f"https://www.google.com/search?q={name}+{creator}+podcast"
-    return recommendations
+def _normalize(recs: List[Dict[str, Any]], user_prefs: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Ensure every recommendation has all required fields + a link.
+
+    The model can omit or mistype fields; we backfill from the user's
+    preferences so the response always validates against the API schema.
+    """
+    defaults = {
+        "name": "Unknown Podcast",
+        "creator": "Unknown Creator",
+        "description": "",
+        "format": user_prefs.get("podcast_format", "Interview"),
+        "duration": user_prefs.get("podcast_duration", "Medium (30-60 min)"),
+        "language": user_prefs.get("content_language", "English"),
+        "region": user_prefs.get("region", "Global"),
+        "reason": "Matches your listening preferences.",
+    }
+    normalized = []
+    for rec in recs[:5]:
+        if not isinstance(rec, dict):
+            continue
+        item = {f: str(rec.get(f) or defaults[f]) for f in _REQUIRED_FIELDS}
+        name = item["name"].replace(" ", "+")
+        creator = item["creator"].replace(" ", "+")
+        item["link"] = f"https://www.google.com/search?q={name}+{creator}+podcast"
+        normalized.append(item)
+    return normalized
 
 
 async def generate_podcast_recommendations(
-    client: Optional[anthropic.AsyncAnthropic],
+    client: Optional[AsyncGroq],
     user_preferences: Dict[str, Any],
     segment_profile: Dict[str, Any],
     model: str,
 ) -> List[Dict[str, Any]]:
     """Return 5 podcast recommendations, falling back to a static list on failure."""
     if client is None:
-        logger.warning("Anthropic client unavailable; returning fallback recommendations")
+        logger.warning("Groq client unavailable; returning fallback recommendations")
         return get_fallback_recommendations(user_preferences)
 
     try:
-        response = await client.messages.create(
+        response = await client.chat.completions.create(
             model=model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": _build_prompt(user_preferences, segment_profile)},
+            ],
+            response_format={"type": "json_object"},
             max_tokens=1500,
-            tools=[SUBMIT_RECOMMENDATIONS_TOOL],
-            tool_choice={"type": "tool", "name": "submit_recommendations"},
-            messages=[{"role": "user", "content": _build_prompt(user_preferences, segment_profile)}],
+            temperature=0.7,
         )
-    except anthropic.APIError as exc:
-        logger.error(f"Anthropic API error generating recommendations: {exc}")
+        content = response.choices[0].message.content
+        recommendations = (json.loads(content) or {}).get("recommendations", [])
+        if not recommendations:
+            raise ValueError("no recommendations in model response")
+        return _normalize(recommendations, user_preferences)
+    except Exception as exc:  # noqa: BLE001 - any failure degrades to the static fallback
+        logger.error(f"Groq recommendation error: {exc}")
         return get_fallback_recommendations(user_preferences)
-
-    for block in response.content:
-        if block.type == "tool_use":
-            recommendations = block.input.get("recommendations", [])
-            if recommendations:
-                return _add_links(recommendations)
-
-    logger.error("Claude response contained no tool_use recommendations; using fallback")
-    return get_fallback_recommendations(user_preferences)
 
 
 def get_fallback_recommendations(user_preferences: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Static recommendations used when Claude is unavailable or errors."""
+    """Static recommendations used when the LLM is unavailable or errors."""
     pod_format = user_preferences.get("podcast_format", "Interview")
     pod_duration = user_preferences.get("podcast_duration", "Medium (30-60 min)")
     pod_content_topics = ", ".join(user_preferences.get("podcast_content") or ["Various"])
@@ -151,7 +148,7 @@ def get_fallback_recommendations(user_preferences: Dict[str, Any]) -> List[Dict[
     region = user_preferences.get("region", "Global")
     age = user_preferences.get("age", "25-34")
 
-    return _add_links(
+    return _normalize(
         [
             {
                 "name": "The Daily",
@@ -203,5 +200,6 @@ def get_fallback_recommendations(user_preferences: Dict[str, Any]) -> List[Dict[
                 "region": "Global",
                 "reason": f"Informative content about {pod_content_topics} in your preferred format.",
             },
-        ]
+        ],
+        user_preferences,
     )

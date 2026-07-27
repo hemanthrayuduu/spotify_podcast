@@ -4,9 +4,9 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional
 
-import anthropic
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from groq import AsyncGroq
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -19,21 +19,19 @@ from app.routers import health, recommend
 logger = logging.getLogger(__name__)
 
 
-def _init_anthropic_client() -> Optional[anthropic.AsyncAnthropic]:
-    if not settings.anthropic_api_key:
-        logger.warning("ANTHROPIC_API_KEY not set; recommendations will use fallback mode.")
+def _init_llm_client() -> Optional[AsyncGroq]:
+    if not settings.groq_api_key:
+        logger.warning("GROQ_API_KEY not set; recommendations will use fallback mode.")
         return None
-    logger.info(f"Anthropic client initialized (model={settings.anthropic_model}).")
-    return anthropic.AsyncAnthropic(
-        api_key=settings.anthropic_api_key, timeout=30.0, max_retries=2
-    )
+    logger.info(f"Groq client initialized (model={settings.groq_model}).")
+    return AsyncGroq(api_key=settings.groq_api_key, timeout=30.0, max_retries=2)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Fail loud here: if artifacts are missing/corrupt, startup raises.
     app.state.bundle = load_model_bundle(settings.model_dir)
-    app.state.anthropic_client = _init_anthropic_client()
+    app.state.llm_client = _init_llm_client()
     yield
 
 

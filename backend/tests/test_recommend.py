@@ -1,5 +1,7 @@
 """Integration tests for POST /recommend."""
 
+import json
+
 import pytest_asyncio
 
 from app.main import app
@@ -17,7 +19,7 @@ VALID_BODY = {
 }
 
 
-# --- Fake async Anthropic client -------------------------------------------
+# --- Fake async Groq client (OpenAI-compatible chat.completions) ------------
 
 _FAKE_RECS = [
     {
@@ -34,46 +36,54 @@ _FAKE_RECS = [
 ]
 
 
-class _FakeBlock:
-    type = "tool_use"
+class _FakeMessage:
+    def __init__(self, content):
+        self.content = content
 
-    def __init__(self, recs):
-        self.input = {"recommendations": recs}
+
+class _FakeChoice:
+    def __init__(self, content):
+        self.message = _FakeMessage(content)
 
 
 class _FakeResponse:
-    def __init__(self, recs):
-        self.content = [_FakeBlock(recs)]
+    def __init__(self, content):
+        self.choices = [_FakeChoice(content)]
 
 
-class _FakeMessages:
+class _FakeCompletions:
     def __init__(self, recs):
         self._recs = recs
 
     async def create(self, **kwargs):
-        return _FakeResponse(self._recs)
+        return _FakeResponse(json.dumps({"recommendations": self._recs}))
+
+
+class _FakeChat:
+    def __init__(self, recs):
+        self.completions = _FakeCompletions(recs)
 
 
 class _FakeClient:
     def __init__(self, recs):
-        self.messages = _FakeMessages(recs)
+        self.chat = _FakeChat(recs)
 
 
 @pytest_asyncio.fixture
 async def mocked_llm(client):
-    """Swap app.state.anthropic_client for a fake that returns 5 recs."""
-    original = app.state.anthropic_client
-    app.state.anthropic_client = _FakeClient(_FAKE_RECS)
+    """Swap app.state.llm_client for a fake that returns 5 recs."""
+    original = app.state.llm_client
+    app.state.llm_client = _FakeClient(_FAKE_RECS)
     try:
         yield client
     finally:
-        app.state.anthropic_client = original
+        app.state.llm_client = original
 
 
 # --- Tests ------------------------------------------------------------------
 
 
-async def test_recommend_with_mocked_claude(mocked_llm):
+async def test_recommend_with_mocked_llm(mocked_llm):
     response = await mocked_llm.post("/recommend", json=VALID_BODY)
     assert response.status_code == 200
     data = response.json()
@@ -85,8 +95,8 @@ async def test_recommend_with_mocked_claude(mocked_llm):
 
 
 async def test_recommend_fallback_without_client(client):
-    # The lifespan sets anthropic_client to None when no API key is present.
-    assert app.state.anthropic_client is None
+    # The lifespan sets llm_client to None when no API key is present.
+    assert app.state.llm_client is None
     response = await client.post("/recommend", json=VALID_BODY)
     assert response.status_code == 200
     data = response.json()

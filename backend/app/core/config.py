@@ -15,8 +15,8 @@ class Settings(BaseSettings):
         env_file=".env", extra="ignore", protected_namespaces=()
     )
 
-    anthropic_api_key: str = ""
-    anthropic_model: str = "claude-haiku-4-5"
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
 
     # Comma-separated in the environment; parsed into a list below.
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"

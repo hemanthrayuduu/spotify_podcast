@@ -11,14 +11,14 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
-      # pandas 2.0.1 / numpy 2.2.4 ship 3.11 wheels; keep Render on 3.11.
+      # pandas / numpy ship 3.11 wheels; keep Render on 3.11.
       - key: PYTHON_VERSION
         value: "3.11.9"
       # Secret — set the value in the Render dashboard (never commit it).
-      - key: ANTHROPIC_API_KEY
+      - key: GROQ_API_KEY
         sync: false
-      - key: ANTHROPIC_MODEL
-        value: claude-haiku-4-5
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
       # Lock CORS to the deployed frontend origin.
       - key: ALLOWED_ORIGINS
         value: https://spotify-podcast-recommender.netlify.app

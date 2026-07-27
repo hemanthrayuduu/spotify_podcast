@@ -12,7 +12,7 @@ class UserPreferences(BaseModel):
     Fields split by how they are used downstream:
       * Segment matching (ML feature vector): age, music_genre,
         podcast_frequency, podcast_duration, podcast_format, podcast_content.
-      * AI personalization only (Claude prompt): content_language, region,
+      * AI personalization only (LLM prompt): content_language, region,
         listening_mood, podcasts_enjoyed.
     """
 
