@@ -20,6 +20,9 @@ yarn-error.log
 # Frontend build output
 frontend/build/
 
+# Local Netlify state
+.netlify/
+
 # Development files
 .env
 .env.local
