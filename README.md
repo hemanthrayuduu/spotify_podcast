@@ -66,11 +66,36 @@ npm start
 - `POST /recommend`: Submit user preferences and receive recommendations
 - `GET /`: API health check and information
 
+## Configuration
+
+The backend reads configuration from environment variables (see `.env.example`):
+
+- `ANTHROPIC_API_KEY` — enables Claude recommendations; falls back to a static list if unset.
+- `ANTHROPIC_MODEL` — Claude model (default `claude-haiku-4-5`).
+- `ALLOWED_ORIGINS` — comma-separated CORS origins; set to your frontend URL in production.
+
+## Docker
+
+```bash
+cd backend
+docker build -t podcast-recommender .
+docker run -p 8000:8000 -e ANTHROPIC_API_KEY=your_key podcast-recommender
+```
+
+The image runs as a non-root user and serves on `$PORT` (default 8000).
+
 ## Deployment
 
 The application is configured for deployment on:
 - Frontend: Netlify
-- Backend: Render
+- Backend: Render — start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, health check path `/health`.
+
+## Security note: model artifacts
+
+The ML artifacts in `backend/models/` are Python pickles loaded at startup, and
+`pickle.load` executes code embedded in the file. Only load artifacts produced by
+`backend/train.py` from the trusted survey data in this repo — never load a `.pkl`
+from an untrusted source. Regenerate them with `python train.py`.
 
 ## License
 

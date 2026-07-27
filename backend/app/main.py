@@ -7,8 +7,11 @@ from typing import Optional
 import anthropic
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.core.logging import configure_logging
 from app.ml.loader import load_model_bundle
 from app.routers import health, recommend
@@ -41,6 +44,8 @@ def create_app() -> FastAPI:
         description="Recommends podcasts based on user preferences and a KMeans listening segment.",
         lifespan=lifespan,
     )
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,
