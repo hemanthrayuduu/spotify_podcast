@@ -36,7 +36,9 @@ jobs:
         with:
           node-version: "20"
       - name: Install dependencies
-        run: npm ci
+        # npm install (not npm ci): react-scripts 5 resolves a typescript
+        # version its own peer range rejects, which npm ci refuses.
+        run: npm install --no-audit
       - name: Build
         run: CI=false npm run build
       - name: Test
