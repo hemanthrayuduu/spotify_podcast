@@ -1,0 +1,9 @@
+{
+  "short_name": "Podcast Recommender",
+  "name": "Spotify Podcast Recommender",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1DB954",
+  "background_color": "#121212"
+}
