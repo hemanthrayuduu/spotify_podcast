@@ -171,7 +171,8 @@ async def suggest_podcasts(
         except (json.JSONDecodeError, ValidationError, TypeError) as exc:
             problem = exc
             continue
-        suggestions = [s for s in parsed.candidates if s.title.strip()]
+        # Each suggestion costs an iTunes search, so never take more than asked.
+        suggestions = [s for s in parsed.candidates if s.title.strip()][:n]
         if suggestions:
             return suggestions
         problem = "no candidates"

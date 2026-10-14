@@ -192,3 +192,76 @@ async def test_recommendations_report_feed_language(make_client):
     client, _ = make_client()
     recs = (await client.post("/recommend", json=VALID_BODY)).json()["recommendations"]
     assert {r["language"] for r in recs} == {"en"}
+
+
+async def test_broken_chart_feed_does_not_break_ai_mode(make_client):
+    itunes = FakeITunes(SHOWS, EPISODES, CHARTS)
+    itunes.chart_body = "<html>maintenance</html>"
+    client, _ = make_client(itunes=itunes)
+    response = await client.post("/recommend", json=VALID_BODY)
+    assert response.status_code == 200
+    assert response.json()["meta"]["mode"] == "ai"
+
+
+async def test_malformed_feed_url_does_not_break_the_request(make_client):
+    shows = [dict(s, feedUrl=s["feedUrl"] + "\n") if s["collectionId"] == 107 else s for s in SHOWS]
+    client, _ = make_client(llm=None, itunes=FakeITunes(shows, EPISODES, CHARTS))
+    response = await client.post("/recommend", json=VALID_BODY)
+    assert response.status_code == 200
+    assert 107 in [r["id"] for r in response.json()["recommendations"]]
+
+
+async def test_charts_are_not_fetched_when_the_llm_fills_the_list(make_client):
+    output = suggestions_json(
+        ("Casefile True Crime", "Casefile Presents"), ("Crime Junkie", "audiochuck"),
+        ("Morbid", "Ash Kelley"), ("Criminal", "Phoebe Judge"), ("True Crime Garage", "Nic"),
+    )
+    client, itunes = make_client(llm=FakeGroq([output]))
+    data = (await client.post("/recommend", json=VALID_BODY)).json()
+    assert len(data["recommendations"]) == 5
+    assert not [r for r in itunes.requests if "/rss/" in r.url.path]
+
+
+async def test_enjoyed_show_is_excluded_even_if_its_search_fails(make_client):
+    itunes = FakeITunes(SHOWS, EPISODES, CHARTS)
+    # The enjoyed-show lookup is rate limited (both attempts); the LLM's later
+    # search for the same title succeeds and finds Serial.
+    itunes.fail_first = {"Serial": 2}  # first call + its retry
+    client, _ = make_client(itunes=itunes)
+    data = (await client.post("/recommend", json=VALID_BODY)).json()
+    assert 106 not in [r["id"] for r in data["recommendations"]]
+
+
+async def test_failed_lookups_are_reported_not_called_unverified(make_client):
+    itunes = FakeITunes(SHOWS, EPISODES, CHARTS)
+    itunes.fail_terms = {"Casefile True Crime"}
+    client, _ = make_client(itunes=itunes)
+    meta = (await client.post("/recommend", json=VALID_BODY)).json()["meta"]
+    assert meta["dropped_unverified"] == 1  # only the imaginary show
+    assert meta["catalog_errors"] >= 1
+
+
+async def test_degraded_results_are_not_cached(make_client):
+    itunes = FakeITunes(SHOWS, EPISODES, CHARTS)
+    itunes.fail_terms = {"Casefile True Crime"}
+    client, _ = make_client(itunes=itunes)
+    await client.post("/recommend", json=VALID_BODY)
+    itunes.fail_terms = set()
+    second = (await client.post("/recommend", json=VALID_BODY)).json()
+    assert second["meta"]["cached"] is False
+    assert 101 in [r["id"] for r in second["recommendations"]]
+
+
+async def test_results_without_the_llm_are_not_cached(make_client):
+    client, _ = make_client(llm=FakeGroq([RuntimeError("Groq is down")]))
+    await client.post("/recommend", json=VALID_BODY)
+    second = (await client.post("/recommend", json=VALID_BODY)).json()
+    assert second["meta"]["cached"] is False
+
+
+async def test_persona_only_shows_traits_the_user_shares(make_client):
+    client, _ = make_client(llm=None)
+    body = {**VALID_BODY, "age": "60_plus", "podcast_duration": "short"}
+    persona = (await client.post("/recommend", json=body)).json()["persona"]
+    features = {t["feature"] for t in persona["traits"]}
+    assert not features & {"age:35-60", "age:20-35", "podcast_duration:long"}

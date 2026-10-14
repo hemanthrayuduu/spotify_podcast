@@ -16,7 +16,7 @@ from app.core.limiter import limiter
 from app.core.logging import configure_logging
 from app.ml.segmenter import Segmenter
 from app.routers import health, options, recommend
-from app.services.catalog import ITunesCatalog
+from app.services.catalog import ITunesCatalog, RateBudget
 from app.services.llm import check_model
 from app.services.recommender import Recommender
 
@@ -47,6 +47,7 @@ async def lifespan(app: FastAPI):
             http,
             max_concurrency=settings.itunes_max_concurrency,
             cache_ttl=settings.catalog_cache_ttl_s,
+            budget=RateBudget(settings.itunes_calls_per_minute, settings.itunes_budget_wait_s),
         ),
         llm_client=app.state.llm_client,
         model=settings.groq_model,

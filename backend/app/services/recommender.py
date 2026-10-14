@@ -26,8 +26,15 @@ from urllib.parse import quote
 
 from app.core.vocabulary import Option, option, to_labels
 from app.ml.features import codes_from_prefs, encode
-from app.ml.segmenter import Segmenter
-from app.services.catalog import CatalogError, ITunesCatalog, Show, best_match
+from app.ml.segmenter import Segmenter, personalize
+from app.services.catalog import (
+    CatalogError,
+    ITunesCatalog,
+    Show,
+    best_match,
+    match_enjoyed,
+    same_title,
+)
 from app.services.llm import LLMError, Suggestion, suggest_podcasts
 from app.services.ranking import Candidate, Ranked, rank
 
@@ -35,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 MINOR_AGES = {"under_12", "12_19"}
 _MAX_SEEDS = 3
+_SEARCH_LIMIT = 8  # same limit for seed and verify searches so they share cache entries
 _MAX_CHART_TOPICS = 3
 _CHART_DEPTH = 12  # top shows taken from each genre chart
 _MAX_LOOKUP_IDS = 24
@@ -76,9 +84,12 @@ class Recommender:
         response = await run.execute()
         response["meta"]["latency_ms"] = round((time.perf_counter() - started) * 1000)
 
-        if len(self._cache) >= _MAX_CACHE_ENTRIES:
-            self._cache.pop(next(iter(self._cache)))
-        self._cache[key] = (time.monotonic() + self.cache_ttl, response)
+        # Only cache complete answers: a result degraded by a catalog or LLM
+        # failure should be retried by the next request, not served for minutes.
+        if not run.degraded:
+            if len(self._cache) >= _MAX_CACHE_ENTRIES:
+                self._cache.pop(next(iter(self._cache)))
+            self._cache[key] = (time.monotonic() + self.cache_ttl, response)
         return response
 
 
@@ -89,7 +100,10 @@ class _Run:
         self.rec = rec
         self.prefs = prefs
         self.labels = to_labels(prefs)
-        self.persona = rec.segmenter.predict(encode(codes_from_prefs(prefs)))
+        codes = codes_from_prefs(prefs)
+        self.persona = personalize(rec.segmenter.predict(encode(codes)), codes)
+        names = re.split(r"[,;\n]", prefs.get("podcasts_enjoyed") or "")
+        self.enjoyed_names = [n.strip() for n in names if n.strip()][:_MAX_SEEDS]
         language = option("content_language", prefs["content_language"])
         self.country = language.storefront or option("region", prefs["region"]).storefront
         self.allow_explicit = prefs["age"] not in MINOR_AGES
@@ -101,6 +115,7 @@ class _Run:
         self.dropped_language = 0
         self.catalog_ok = 0
         self.catalog_failed = 0
+        self.llm_failed = False
 
     async def _search(self, term: str, limit: int) -> Optional[List[Show]]:
         try:
@@ -112,11 +127,14 @@ class _Run:
         self.catalog_ok += 1
         return shows
 
+    @property
+    def degraded(self) -> bool:
+        return self.catalog_failed > 0 or self.llm_failed
+
     async def _seeds(self) -> List[Show]:
-        names = [n.strip() for n in re.split(r"[,;\n]", self.prefs.get("podcasts_enjoyed") or "")]
-        names = [n for n in names if n][:_MAX_SEEDS]
-        results = await asyncio.gather(*(self._search(n, 5) for n in names))
-        return [m for n, shows in zip(names, results) if shows and (m := best_match(n, "", shows))]
+        names = self.enjoyed_names
+        results = await asyncio.gather(*(self._search(n, _SEARCH_LIMIT) for n in names))
+        return [m for n, shows in zip(names, results) if shows and (m := match_enjoyed(n, shows))]
 
     async def _suggestions(self) -> List[Suggestion]:
         if self.rec.llm_client is None:
@@ -127,13 +145,16 @@ class _Run:
             )
         except LLMError as exc:
             logger.warning(f"LLM unavailable, using catalog only: {exc}")
+            self.llm_failed = True
             return []
 
     async def _verify(self, suggestions: Sequence[Suggestion]) -> Tuple[List[Candidate], int]:
-        results = await asyncio.gather(*(self._search(s.title, 8) for s in suggestions))
+        results = await asyncio.gather(*(self._search(s.title, _SEARCH_LIMIT) for s in suggestions))
         verified, dropped = [], 0
         for i, (s, shows) in enumerate(zip(suggestions, results)):
-            match = best_match(s.title, s.host, shows or [])
+            if shows is None:  # the search failed; that's a catalog error, not a fake show
+                continue
+            match = best_match(s.title, s.host, shows)
             if match is None:
                 dropped += 1
                 continue
@@ -165,8 +186,7 @@ class _Run:
         return result
 
     async def _charts(self) -> List[List[int]]:
-        """Chart ids per topic. Fetched up front, alongside the LLM, because
-        they're cheap (cached for hours) and needed whenever the LLM falls short."""
+        """Chart ids per topic (cached for hours)."""
         return list(await asyncio.gather(*(self._chart(t) for t in self.topics[:_MAX_CHART_TOPICS])))
 
     async def _chart_candidates(
@@ -229,11 +249,15 @@ class _Run:
     def _rank(
         self, candidates: List[Candidate], seeds: List[Show], top_n: Optional[int]
     ) -> List[Ranked]:
+        # Exclude enjoyed shows by name too, so it doesn't hinge on their search succeeding.
+        enjoyed = {s.id for s in seeds} | {
+            c.show.id for c in candidates if any(same_title(n, c.show) for n in self.enjoyed_names)
+        }
         return rank(
             candidates,
             target_genres=self.target_genres,
             seed_genres={g for s in seeds for g in s.genres},
-            seed_ids={s.id for s in seeds},
+            seed_ids=enjoyed,
             minutes=self.band,
             allow_explicit=self.allow_explicit,
             today=self.rec.today(),
@@ -241,15 +265,15 @@ class _Run:
         )
 
     async def execute(self) -> Dict[str, Any]:
-        seeds, suggestions, charts = await asyncio.gather(
-            self._seeds(), self._suggestions(), self._charts()
-        )
+        seeds, suggestions = await asyncio.gather(self._seeds(), self._suggestions())
         candidates, dropped = await self._verify(suggestions)
         # Episode stats come from Apple, languages from publishers' feeds: overlap them.
         await asyncio.gather(self._enrich(candidates), self._languages([c.show for c in candidates]))
         ranked = await self._in_language(candidates, seeds)
 
         if len(ranked) < self.rec.top_n:
+            # Charts only when needed: each one is an iTunes call from a ~20/min budget.
+            charts = await self._charts()
             candidates += await self._chart_candidates(charts, {c.show.id: c for c in candidates})
             ranked = await self._in_language(candidates, seeds)
 
@@ -267,6 +291,7 @@ class _Run:
                 "candidates_considered": len({c.show.id for c in candidates}),
                 "dropped_unverified": dropped,
                 "dropped_language": self.dropped_language,
+                "catalog_errors": self.catalog_failed,
                 "segment_model_version": self.rec.segmenter.model_version,
                 "cached": False,
             },

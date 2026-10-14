@@ -8,7 +8,14 @@ from datetime import date
 import httpx
 import pytest
 
-from app.services.catalog import CatalogError, ITunesCatalog, Show, best_match
+from app.services.catalog import (
+    CatalogError,
+    ITunesCatalog,
+    RateBudget,
+    Show,
+    best_match,
+    match_enjoyed,
+)
 from tests.itunes_fakes import FakeITunes, episode, show
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -133,6 +140,43 @@ async def test_feed_language_is_none_when_undeclared_or_unreachable():
     assert await ITunesCatalog(failing).feed_language("file:///etc/passwd") is None
 
 
+async def test_non_json_response_is_a_catalog_error():
+    with pytest.raises(CatalogError):
+        await ITunesCatalog(_static_client("<html>maintenance</html>")).search("x", country="us")
+
+
+async def test_malformed_chart_is_a_catalog_error():
+    body = json.dumps({"feed": {"entry": [{"id": {}}]}})
+    with pytest.raises(CatalogError):
+        await ITunesCatalog(_static_client(body)).top_chart(1488, country="us")
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://feeds.example.com/107.xml\n", "https://☃.example.com/rss", "https://example.com:8O80/rss"],
+)
+async def test_feed_language_survives_malformed_urls(url):
+    assert await ITunesCatalog(_static_client("<language>en</language>")).feed_language(url) is None
+
+
+async def test_call_budget_fails_fast_when_exhausted():
+    fake = FakeITunes([show(1, "Comedy Bang Bang", "Earwolf")])
+    budget = RateBudget(calls_per_minute=2, max_wait=0)
+    catalog = ITunesCatalog(fake.client(), budget=budget)
+    await catalog.search("a", country="us")
+    await catalog.search("b", country="us")
+    with pytest.raises(CatalogError, match="budget"):
+        await catalog.search("c", country="us")
+    assert len(fake.requests) == 2
+
+
+async def test_cached_responses_do_not_spend_budget():
+    fake = FakeITunes([show(1, "Comedy Bang Bang", "Earwolf")])
+    catalog = ITunesCatalog(fake.client(), budget=RateBudget(calls_per_minute=1, max_wait=0))
+    await catalog.search("a", country="us")
+    await catalog.search("a", country="us")  # cached: no budget needed
+
+
 # --- Resolver -----------------------------------------------------------------
 
 
@@ -169,3 +213,31 @@ def test_host_breaks_ties_between_same_titled_shows():
 
 def test_search_rank_breaks_ties_without_host():
     assert best_match("Lex Fridman Podcast", "", [LEX, IMPOSTOR]) is LEX
+
+
+@pytest.mark.parametrize(
+    "title, host, copycat",
+    [
+        ("Serial", "Sarah Koenig", ("Serials", "Random")),
+        ("Stuff You Should Know", "iHeartPodcasts", ("Stuff You Should Know About Money", "Copycat")),
+        ("The Joe Rogan Experience", "Joe Rogan", ("Joe Rogan Experience Review podcast", "Fan")),
+    ],
+)
+def test_copycats_are_rejected_when_the_real_show_is_missing(title, host, copycat):
+    assert best_match(title, host, [_show(5, *copycat)]) is None
+
+
+def test_real_show_under_network_publisher_is_accepted():
+    daily = _show(7, "The Daily", "The New York Times")
+    assert best_match("The Daily", "Michael Barbaro", [daily]) is daily
+
+
+def test_short_title_prefix_with_related_publisher_is_accepted():
+    freak = _show(8, "Freakonomics Radio", "Freakonomics Radio + Stitcher")
+    assert best_match("Freakonomics", "Stephen J. Dubner", [freak]) is freak
+
+
+def test_user_typed_shorthand_matches_the_real_show():
+    # Users type "Hardcore History", not "Dan Carlin's Hardcore History".
+    assert match_enjoyed("Hardcore History", [HARDCORE]) is HARDCORE
+    assert match_enjoyed("Quantum Gardening", [HARDCORE]) is None

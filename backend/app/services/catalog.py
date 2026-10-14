@@ -49,7 +49,41 @@ def normalize_language(raw: str) -> Optional[str]:
 
 
 class CatalogError(Exception):
-    """The catalog could not be reached (after a retry)."""
+    """The catalog could not be reached, refused us, or returned garbage."""
+
+
+class RateBudget:
+    """Process-wide token bucket for iTunes calls.
+
+    Apple allows roughly 20 calls per minute per IP. The semaphore caps
+    concurrency, not rate; this caps the rate, failing fast once a short wait
+    wouldn't help, so a traffic burst degrades results instead of getting the
+    server's IP blocked.
+    """
+
+    def __init__(self, calls_per_minute: int = 18, max_wait: float = 2.0):
+        self._capacity = float(calls_per_minute)
+        self._tokens = float(calls_per_minute)
+        self._per_second = calls_per_minute / 60
+        self._max_wait = max_wait
+        self._updated = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    def _refill(self) -> None:
+        now = time.monotonic()
+        self._tokens = min(self._capacity, self._tokens + (now - self._updated) * self._per_second)
+        self._updated = now
+
+    async def acquire(self) -> None:
+        async with self._lock:
+            self._refill()
+            if self._tokens < 1:
+                wait = (1 - self._tokens) / self._per_second
+                if wait > self._max_wait:
+                    raise CatalogError("iTunes call budget exhausted; try again shortly")
+                await asyncio.sleep(wait)
+                self._refill()
+            self._tokens -= 1
 
 
 @dataclass(frozen=True)
@@ -85,6 +119,19 @@ def _parse_show(r: Dict[str, Any]) -> Show:
     )
 
 
+def _shows(results: Any) -> List[Show]:
+    """Parse show records, skipping malformed ones rather than failing the request."""
+    shows = []
+    for r in results if isinstance(results, list) else []:
+        if not isinstance(r, dict) or r.get("kind") != "podcast" or not r.get("collectionId"):
+            continue
+        try:
+            shows.append(_parse_show(r))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return shows
+
+
 def _date(value: Optional[str]) -> Optional[date]:
     try:
         return date.fromisoformat(value[:10]) if value else None
@@ -99,8 +146,10 @@ class ITunesCatalog:
         max_concurrency: int = 4,
         cache_ttl: float = 6 * 3600,
         retry_delay: float = 1.0,
+        budget: Optional[RateBudget] = None,
     ):
         self._http = http
+        self._budget = budget
         self._sem = asyncio.Semaphore(max_concurrency)
         self._cache: Dict[Tuple, Tuple[float, Dict[str, Any]]] = {}
         self._cache_ttl = cache_ttl
@@ -118,13 +167,20 @@ class ITunesCatalog:
         error: object = None
         async with self._sem:
             for attempt in range(2):
+                if self._budget:
+                    await self._budget.acquire()
                 try:
                     response = await self._http.get(BASE_URL + path, params=params)
                 except httpx.HTTPError as exc:
                     error = exc
                 else:
                     if response.status_code == 200:
-                        body = response.json()
+                        try:
+                            body = response.json()
+                        except ValueError:
+                            raise CatalogError(f"iTunes {path} returned non-JSON") from None
+                        if not isinstance(body, dict):
+                            raise CatalogError(f"iTunes {path} returned unexpected JSON")
                         if len(self._cache) >= _MAX_CACHE_ENTRIES:
                             self._cache.pop(next(iter(self._cache)))
                         self._cache[key] = (time.monotonic() + self._cache_ttl, body)
@@ -149,8 +205,7 @@ class ITunesCatalog:
         }
         if not explicit:
             params["explicit"] = "No"
-        results = (await self._get("/search", params)).get("results", [])
-        return [_parse_show(r) for r in results if r.get("kind") == "podcast" and r.get("collectionId")]
+        return _shows((await self._get("/search", params)).get("results"))
 
     async def lookup(
         self, ids: Sequence[int], country: str, per_show: int = 5
@@ -173,16 +228,14 @@ class ITunesCatalog:
                 for chunk in chunks
             )
         )
-        shows: Dict[int, Show] = {}
+        results = [r for body in bodies for r in (body.get("results") or []) if isinstance(r, dict)]
+        shows = {show.id: show for show in _shows(results)}
         minutes: Dict[int, List[float]] = {}
         dates: Dict[int, List[date]] = {}
-        for r in (r for body in bodies for r in body.get("results", [])):
-            if r.get("kind") == "podcast" and r.get("collectionId"):
-                show = _parse_show(r)
-                shows[show.id] = show
-            elif r.get("wrapperType") == "podcastEpisode":
-                cid = int(r["collectionId"])
-                if r.get("trackTimeMillis"):
+        for r in results:
+            if r.get("wrapperType") == "podcastEpisode" and isinstance(r.get("collectionId"), int):
+                cid = r["collectionId"]
+                if isinstance(r.get("trackTimeMillis"), (int, float)) and r["trackTimeMillis"] > 0:
                     minutes.setdefault(cid, []).append(r["trackTimeMillis"] / 60000)
                 if d := _date(r.get("releaseDate")):
                     dates.setdefault(cid, []).append(d)
@@ -198,10 +251,13 @@ class ITunesCatalog:
     async def top_chart(self, genre_id: int, country: str, limit: int = 25) -> List[int]:
         """Collection ids of a storefront's top shows in an Apple genre, in chart order."""
         body = await self._get(f"/{country}/rss/toppodcasts/limit={limit}/genre={genre_id}/json", {})
-        entries = body.get("feed", {}).get("entry", [])
-        if isinstance(entries, dict):  # the legacy feed collapses a single entry
-            entries = [entries]
-        return [int(e["id"]["attributes"]["im:id"]) for e in entries]
+        try:
+            entries = body.get("feed", {}).get("entry", [])
+            if isinstance(entries, dict):  # the legacy feed collapses a single entry
+                entries = [entries]
+            return [int(e["id"]["attributes"]["im:id"]) for e in entries]
+        except (AttributeError, KeyError, TypeError, ValueError):
+            raise CatalogError(f"chart {genre_id} ({country}) has an unexpected format") from None
 
 
     async def feed_language(self, feed_url: Optional[str]) -> Optional[str]:
@@ -227,7 +283,7 @@ class ITunesCatalog:
                                 break
                             if len(head) >= _FEED_BYTES:
                                 break
-        except httpx.HTTPError:
+        except Exception:  # noqa: BLE001 - best effort: bad URLs, TLS, decoding, ...
             language = None
         if len(self._feed_languages) >= _MAX_CACHE_ENTRIES:
             self._feed_languages.pop(next(iter(self._feed_languages)))
@@ -250,14 +306,26 @@ def _norm_name(s: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", s.casefold()).split())
 
 
+def _tokens(s: str) -> List[str]:
+    return s.split()
+
+
 def best_match(title: str, host: str, shows: Sequence[Show]) -> Optional[Show]:
     """Pick the catalog show an LLM candidate refers to, or None.
 
-    Accept a show when the titles match closely, or when the candidate title
-    is contained in the show title and something else corroborates it (the
-    host matches, it's a long prefix, or it has 3+ words). Among accepted
-    shows, prefer a matching host, then iTunes' own ranking — this matters
-    because copycat shows reuse popular titles under other publishers.
+    Copycat feeds reuse popular titles ("Serials", "Stuff You Should Know
+    About Money", "Joe Rogan Experience Review"), and when the real show is
+    missing from the results they are the closest thing left. So:
+
+      * an exact title is accepted unless the host clearly points elsewhere
+        and it isn't iTunes' top result (networks often publish the shows
+        hosts front, so a host/publisher mismatch alone proves little);
+      * a near-identical title needs a publisher related to the host or title;
+      * a title contained in a longer one ("Hardcore History" in "Dan
+        Carlin's Hardcore History") needs a matching host, or a related
+        publisher and a short prefix extension ("Freakonomics" → "…Radio").
+
+    Among accepted shows, prefer a matching host, then iTunes' ranking.
     """
     want = _norm_title(title)
     if not want:
@@ -266,17 +334,56 @@ def best_match(title: str, host: str, shows: Sequence[Show]) -> Optional[Show]:
     best, best_score = None, float("-inf")
     for rank, show in enumerate(shows):
         have = _norm_title(show.title)
+        publisher = _norm_name(show.publisher)
         full = fuzz.ratio(want, have)
-        subset = fuzz.token_set_ratio(want, have)
-        host_score = fuzz.token_sort_ratio(want_host, _norm_name(show.publisher)) if want_host else 0
-        corroborated = (
-            host_score >= 80
-            or len(want.split()) >= 3
-            or (have.startswith(want) and len(want) >= 8)
+        host_score = fuzz.token_sort_ratio(want_host, publisher) if want_host else 0
+        related = (
+            None
+            if not want_host
+            else host_score >= 60
+            or bool(set(_tokens(publisher)) & (set(_tokens(want_host)) | set(_tokens(want))))
         )
-        if not (full >= 88 or (subset >= 95 and corroborated)):
+        extra = len(set(_tokens(have)) - set(_tokens(want)))
+        subset = set(_tokens(want)) <= set(_tokens(have))
+
+        if want == have:
+            accepted = related is not False or rank == 0
+        elif full >= 92:
+            accepted = related is True
+        elif subset and extra <= 2:
+            accepted = host_score >= 80 or (
+                related is not False and have.startswith(want) and len(want) >= 8 and extra <= 1
+            )
+        else:
+            accepted = False
+        if not accepted:
             continue
-        score = max(full, subset) + 0.5 * host_score - rank
+        score = full + 0.5 * host_score - rank
         if score > best_score:
             best, best_score = show, score
     return best
+
+
+def match_enjoyed(name: str, shows: Sequence[Show]) -> Optional[Show]:
+    """Resolve a show name the user typed (no host given; shorthand is common).
+
+    Lenient on purpose: a wrong match only excludes a show and nudges topic
+    fit, while a miss lets an already-enjoyed show be recommended back.
+    """
+    want = _norm_title(name)
+    if not want:
+        return None
+    for show in shows:  # iTunes ranks the popular, real show first
+        have = _norm_title(show.title)
+        extra = len(set(_tokens(have)) - set(_tokens(want)))
+        if want == have or fuzz.ratio(want, have) >= 85 or (
+            set(_tokens(want)) <= set(_tokens(have)) and extra <= 3
+        ):
+            return show
+    return None
+
+
+def same_title(name: str, show: Show) -> bool:
+    """Strict check used to exclude enjoyed shows by name alone."""
+    want, have = _norm_title(name), _norm_title(show.title)
+    return bool(want) and (want == have or fuzz.ratio(want, have) >= 92)

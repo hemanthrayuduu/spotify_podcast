@@ -137,6 +137,7 @@ class RecommendMeta(BaseModel):
     candidates_considered: int
     dropped_unverified: int = Field(..., description="LLM candidates not found in the catalog")
     dropped_language: int = Field(..., description="Shows whose feed is in another language")
+    catalog_errors: int = Field(..., description="Catalog calls that failed; results may be partial")
     segment_model_version: str
     cached: bool
     latency_ms: int

@@ -118,3 +118,11 @@ async def test_api_error_raises_llm_error():
     client = FakeGroq([RuntimeError("503 from Groq")])
     with pytest.raises(LLMError, match="503"):
         await suggest_podcasts(client, LABELS, PERSONA, "openai/gpt-oss-120b")
+
+
+async def test_never_returns_more_than_requested():
+    many = json.dumps({"candidates": [
+        {"title": f"Show {i}", "host": "H", "summary": "s", "reason": "r"} for i in range(15)
+    ]})
+    suggestions = await suggest_podcasts(FakeGroq([many]), LABELS, PERSONA, "openai/gpt-oss-120b", n=8)
+    assert len(suggestions) == 8

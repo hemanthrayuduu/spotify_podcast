@@ -60,6 +60,9 @@ class FakeITunes:
         self.languages = languages or {}
         self.requests: List[httpx.Request] = []
         self.fail_with: Optional[int] = None  # HTTP status to return for every call
+        self.fail_terms: set = set()  # /search terms that get a 403 (rate limited)
+        self.fail_first: Dict[str, int] = {}  # /search term → number of initial 403s
+        self.chart_body: Optional[str] = None  # raw body for chart requests
 
     def _params(self, request: httpx.Request) -> Dict[str, str]:
         return {k: v[0] for k, v in parse_qs(request.url.query.decode()).items()}
@@ -69,12 +72,19 @@ class FakeITunes:
         if self.fail_with:
             return httpx.Response(self.fail_with)
         params = self._params(request)
+        if params.get("term") in self.fail_terms:
+            return httpx.Response(403)
+        if self.fail_first.get(params.get("term"), 0) > 0:
+            self.fail_first[params["term"]] -= 1
+            return httpx.Response(403)
         if request.url.host == "feeds.example.com":
             show_id = int(request.url.path.strip("/").split(".")[0])
             language = self.languages.get(show_id, "en-us")
             return httpx.Response(
                 200, text=f"<?xml version='1.0'?><rss><channel><title>t</title><language>{language}</language>"
             )
+        if "/rss/toppodcasts/" in request.url.path and self.chart_body is not None:
+            return httpx.Response(200, text=self.chart_body)
         if "/rss/toppodcasts/" in request.url.path:
             genre = int(request.url.path.split("genre=")[1].split("/")[0])
             entries = [{"id": {"attributes": {"im:id": str(i)}}} for i in self.charts.get(genre, [])]
