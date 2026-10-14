@@ -26,7 +26,7 @@ def test_every_segment_code_is_reachable_from_an_option(field):
 
 def test_topics_have_catalog_mapping():
     for option in FIELDS["podcast_content"].options:
-        assert option.search_term, option.value
+        assert option.chart_genre_id, option.value
         assert option.apple_genres, option.value
 
 
@@ -51,3 +51,8 @@ def test_options_payload_lists_every_field():
     assert names == list(FIELDS)
     age = payload["fields"][0]
     assert age["options"][0] == {"value": "under_12", "label": "Under 12"}
+
+
+def test_languages_have_iso_codes():
+    for option in FIELDS["content_language"].options:
+        assert option.iso_language and len(option.iso_language) == 2, option.value

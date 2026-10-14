@@ -27,6 +27,12 @@ class Settings(BaseSettings):
 
     rate_limit: str = "10/minute"
 
+    # Apple iTunes Search API (~20 calls/min/IP): cap concurrency, cache hard.
+    itunes_timeout_s: float = 8.0
+    itunes_max_concurrency: int = 4
+    catalog_cache_ttl_s: int = 6 * 3600
+    response_cache_ttl_s: int = 600
+
     @property
     def allowed_origins_list(self) -> List[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]

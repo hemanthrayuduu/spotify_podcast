@@ -4,6 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from groq import AsyncGroq
@@ -15,7 +16,9 @@ from app.core.limiter import limiter
 from app.core.logging import configure_logging
 from app.ml.segmenter import Segmenter
 from app.routers import health, options, recommend
+from app.services.catalog import ITunesCatalog
 from app.services.llm import check_model
+from app.services.recommender import Recommender
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +37,25 @@ async def lifespan(app: FastAPI):
     app.state.segmenter = Segmenter.load(settings.model_dir)
     app.state.llm_client = _init_llm_client()
     app.state.llm_status = await check_model(app.state.llm_client, settings.groq_model)
-    yield
+    http = httpx.AsyncClient(
+        timeout=settings.itunes_timeout_s,
+        headers={"User-Agent": "spotify-podcast-recommender/2.0"},
+    )
+    app.state.recommender = Recommender(
+        segmenter=app.state.segmenter,
+        catalog=ITunesCatalog(
+            http,
+            max_concurrency=settings.itunes_max_concurrency,
+            cache_ttl=settings.catalog_cache_ttl_s,
+        ),
+        llm_client=app.state.llm_client,
+        model=settings.groq_model,
+        cache_ttl=settings.response_cache_ttl_s,
+    )
+    try:
+        yield
+    finally:
+        await http.aclose()
 
 
 def create_app() -> FastAPI:
