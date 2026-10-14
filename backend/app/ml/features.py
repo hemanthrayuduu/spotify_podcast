@@ -1,35 +1,63 @@
-"""Map user preferences to the scaled one-hot feature vector."""
+"""Encode segment answers as the feature vector the KMeans model was trained on.
 
-from typing import Any, Dict, List
+Training (app.ml.training) and serving both go through ``encode``, so the two
+can't disagree about feature names or values.
+
+Layout, in ``FEATURE_NAMES`` order:
+  * ``age``: survey age bucket position, scaled to [0, 1]
+  * multi-select fields: multi-hot, normalized to sum to 1, so someone who
+    ticks many genres doesn't outweigh someone who ticks one
+  * single-select fields: one-hot
+An unanswered field (or a "No preference"/LLM-only option) encodes as all
+zeros, the same as an unanswered survey question.
+"""
+
+from typing import Any, Dict, List, Set
 
 import numpy as np
 
-from app.ml.loader import ModelBundle
+from app.core.vocabulary import FIELDS, SEGMENT_FIELDS, option
 
-AGE_MAP = {"18-24": 21, "25-34": 30, "35-44": 40, "45-54": 50, "55+": 60}
+SegmentCodes = Dict[str, Set[str]]
 
 
-def prepare_features(bundle: ModelBundle, preferences: Dict[str, Any]) -> np.ndarray:
-    """Build the scaled feature vector for KMeans prediction."""
-    valid_features = bundle.valid_features
-    features: Dict[str, int] = {"age_numeric": AGE_MAP.get(preferences["age"], 30)}
+def _feature_names() -> List[str]:
+    names: List[str] = []
+    for name in SEGMENT_FIELDS:
+        field = FIELDS[name]
+        if field.ordinal:
+            names.append(name)
+        else:
+            names.extend(f"{name}:{code}" for code in field.segment_codes)
+    return names
 
-    def set_multi(base_name: str, values: List[str]) -> None:
-        for value in values:
-            if value and f"{base_name}_{value}" in valid_features:
-                features[f"{base_name}_{value}"] = 1
 
-    def set_single(base_name: str, value: str) -> None:
-        if value and f"{base_name}_{value}" in valid_features:
-            features[f"{base_name}_{value}"] = 1
+FEATURE_NAMES: List[str] = _feature_names()
+_INDEX = {name: i for i, name in enumerate(FEATURE_NAMES)}
 
-    set_multi("fav_music_genre", preferences["music_genre"])
-    set_multi("fav_pod_genre", preferences["podcast_content"])
-    set_single("pod_lis_frequency", preferences["podcast_frequency"])
-    set_single("preffered_pod_duration", preferences["podcast_duration"])
-    set_single("preffered_pod_format", preferences["podcast_format"])
 
-    feature_vector = np.array(
-        [[features.get(name, 0) for name in valid_features]], dtype=float
-    )
-    return bundle.scaler.transform(feature_vector)
+def codes_from_prefs(prefs: Dict[str, Any]) -> SegmentCodes:
+    """Map request option values to survey codes, dropping LLM-only options."""
+    codes: SegmentCodes = {}
+    for name in SEGMENT_FIELDS:
+        raw = prefs.get(name)
+        values = raw if isinstance(raw, list) else [raw] if raw else []
+        codes[name] = {c for c in (option(name, v).code for v in values) if c}
+    return codes
+
+
+def encode(codes: SegmentCodes) -> np.ndarray:
+    vec = np.zeros(len(FEATURE_NAMES), dtype=float)
+    for name in SEGMENT_FIELDS:
+        field = FIELDS[name]
+        selected = codes.get(name) or set()
+        if not selected:
+            continue
+        if field.ordinal:
+            (code,) = selected
+            vec[_INDEX[name]] = field.segment_codes.index(code) / (len(field.segment_codes) - 1)
+            continue
+        weight = 1.0 / len(selected) if field.multi else 1.0
+        for code in selected:
+            vec[_INDEX[f"{name}:{code}"]] = weight
+    return vec

@@ -1,7 +1,7 @@
 """Groq-backed podcast recommendation generation.
 
 Single source of truth for turning a user's preferences + their KMeans
-segment profile into 5 podcast recommendations. Uses Groq (an open-weight
+listener persona into 5 podcast recommendations. Uses Groq (an open-weight
 gpt-oss model) in JSON mode so the model returns a structured payload instead
 of free-text we have to scrape.
 """
@@ -58,13 +58,9 @@ async def check_model(client: Optional[AsyncGroq], model: str) -> Dict[str, Any]
     return {"configured": True, "model": model, "ok": True, "error": None}
 
 
-def _build_prompt(user_prefs: Dict[str, Any], segment_profile: Dict[str, Any]) -> str:
+def _build_prompt(user_prefs: Dict[str, Any], persona: Dict[str, Any]) -> str:
     music_genres = ", ".join(user_prefs.get("music_genre") or ["Various"])
     pod_content_topics = ", ".join(user_prefs.get("podcast_content") or ["Various"])
-
-    top_music_genre = next(iter(segment_profile.get("fav_music_genre", {})), "Various")
-    top_pod_genre = next(iter(segment_profile.get("fav_pod_genre", {})), "Various")
-    segment_age = segment_profile.get("age_numeric", {}).get("mean", 30)
 
     prompt = f"""Based on the user profile and preferences below, suggest 5 real, high-quality podcasts they would enjoy. Be specific and personalized, not generic.
 
@@ -100,7 +96,8 @@ Respond with a JSON object of this exact shape:
 }
 The "recommendations" array must contain exactly 5 items.
 """
-    prompt += f"\n(Segment context — top music genre: {top_music_genre}, top podcast genre: {top_pod_genre}, average age: {segment_age}.)\n"
+    if persona.get("description"):
+        prompt += f"\n(Listener persona from our survey model — {persona['name']}: {persona['description']})\n"
     return prompt
 
 
@@ -135,7 +132,7 @@ def _normalize(recs: List[Dict[str, Any]], user_prefs: Dict[str, Any]) -> List[D
 async def generate_podcast_recommendations(
     client: Optional[AsyncGroq],
     user_preferences: Dict[str, Any],
-    segment_profile: Dict[str, Any],
+    persona: Dict[str, Any],
     model: str,
 ) -> List[Dict[str, Any]]:
     """Return 5 podcast recommendations, falling back to a static list on failure."""
@@ -151,7 +148,7 @@ async def generate_podcast_recommendations(
             model=model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": _build_prompt(user_preferences, segment_profile)},
+                {"role": "user", "content": _build_prompt(user_preferences, persona)},
             ],
             response_format={"type": "json_object"},
             max_completion_tokens=_MAX_COMPLETION_TOKENS,

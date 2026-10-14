@@ -1,0 +1,3 @@
+# Only needed to retrain models/segments.json (python train.py); not used by the API.
+pandas==3.0.6
+scikit-learn==1.9.1

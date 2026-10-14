@@ -1,22 +1,31 @@
 """Request/response schemas for the recommendation endpoint."""
 
 import json
-from typing import Any, Dict, List
+from typing import Any, List
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.vocabulary import allowed_values
+
+
+def _check_allowed(field: str, value: str) -> str:
+    allowed = allowed_values(field)
+    if value not in allowed:
+        raise ValueError(f"{value!r} is not a valid option; must be one of: {', '.join(allowed)}")
+    return value
+
 
 class UserPreferences(BaseModel):
-    """Request body for /recommend.
+    """Request body for /recommend. Values are option values from GET /options.
 
     Fields split by how they are used downstream:
-      * Segment matching (ML feature vector): age, music_genre,
-        podcast_frequency, podcast_duration, podcast_format, podcast_content.
+      * Segment matching (persona): age, music_genre, podcast_frequency,
+        podcast_duration, podcast_format, podcast_content.
       * AI personalization only (LLM prompt): content_language, region,
         listening_mood, podcasts_enjoyed.
     """
 
-    # --- Used for KMeans segment matching ---
+    # --- Used for segment matching ---
     age: str
     music_genre: List[str] = Field(..., description="At least one favorite music genre")
     podcast_frequency: str
@@ -28,7 +37,7 @@ class UserPreferences(BaseModel):
     content_language: str
     region: str
     listening_mood: str
-    podcasts_enjoyed: str = ""
+    podcasts_enjoyed: str = Field("", max_length=500)
 
     @field_validator("music_genre", "podcast_content", mode="before")
     @classmethod
@@ -50,10 +59,34 @@ class UserPreferences(BaseModel):
 
     @field_validator("music_genre", "podcast_content")
     @classmethod
-    def not_empty(cls, v: List[str]) -> List[str]:
+    def valid_multi(cls, v: List[str], info) -> List[str]:
         if not v:
             raise ValueError("must contain at least one item")
-        return v
+        # Dedupe, keeping the user's order.
+        return [_check_allowed(info.field_name, item) for item in dict.fromkeys(v)]
+
+    @field_validator(
+        "age", "podcast_frequency", "podcast_duration", "podcast_format",
+        "content_language", "region", "listening_mood",
+    )
+    @classmethod
+    def valid_single(cls, v: str, info) -> str:
+        return _check_allowed(info.field_name, v)
+
+
+class PersonaTrait(BaseModel):
+    feature: str
+    label: str
+    share: float
+    lift: float
+
+
+class Persona(BaseModel):
+    id: int
+    name: str
+    description: str
+    traits: List[PersonaTrait]
+    share: float
 
 
 class Recommendation(BaseModel):
@@ -69,5 +102,5 @@ class Recommendation(BaseModel):
 
 
 class RecommendationResponse(BaseModel):
-    segment_profile: Dict[str, Any]
+    persona: Persona
     recommendations: List[Recommendation]

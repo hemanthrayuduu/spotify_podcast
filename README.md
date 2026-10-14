@@ -23,9 +23,9 @@ Spotify Podcast Recommender analyzes user preferences and listening habits to pr
 
 ### Backend
 - FastAPI (Python) for efficient API endpoints
-- KMeans clustering for user segmentation
+- KMeans listener personas trained on a 28k-response Spotify user survey (numpy-only at serving time)
 - Open-weight LLM (gpt-oss via Groq) integration for recommendation intelligence
-- Scikit-learn for preprocessing and model training
+- pandas + scikit-learn for offline training only (`requirements-train.txt`)
 
 ## Installation
 
@@ -43,7 +43,8 @@ pip install -r requirements.txt
 # Create .env file with GROQ_API_KEY=your_api_key (see .env.example)
 uvicorn app.main:app --reload
 
-# To regenerate the ML model artifacts from the survey data:
+# To retrain the persona model from the survey data:
+pip install -r requirements-train.txt
 python train.py
 ```
 
@@ -63,8 +64,10 @@ npm start
 
 ## API Endpoints
 
-- `POST /recommend`: Submit user preferences and receive recommendations
-- `GET /`: API health check and information
+- `GET /options`: Form fields and the allowed option values (the frontend renders its form from this)
+- `POST /recommend`: Submit option values and receive a listener persona + recommendations
+- `GET /health`: Readiness, persona-model version, and LLM status
+- `GET /`: API information
 
 ## Configuration
 
@@ -90,12 +93,28 @@ The application is configured for deployment on:
 - Frontend: Netlify
 - Backend: Render — start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, health check path `/health`. Rate limiting keys on the client IP Render appends to `X-Forwarded-For` (`app/core/limiter.py`).
 
-## Security note: model artifacts
+## Listener personas (survey model)
 
-The ML artifacts in `backend/models/` are Python pickles loaded at startup, and
-`pickle.load` executes code embedded in the file. Only load artifacts produced by
-`backend/train.py` from the trusted survey data in this repo — never load a `.pkl`
-from an untrusted source. Regenerate them with `python train.py`.
+`backend/train.py` trains a KMeans model on `data/Spotify_user_research.csv`:
+
+1. **One vocabulary.** Every form option is defined once in `app/core/vocabulary.py`. Each
+   option that corresponds to a survey answer carries the cleaned survey category it maps to.
+   Every raw survey answer is mapped explicitly in `app/ml/training.py`, including messy
+   variants such as `classical`/`Classical`, `Shorter`, and `Classical & melody, dance`.
+   An answer that isn't in the map fails training instead of being dropped silently.
+2. **Same features for training and serving.** `app/ml/features.py` encodes both survey rows
+   and requests, so the two can't drift. Each field is scaled to equal total variance, so no
+   single always-answered question dominates the clusters.
+3. **k by silhouette, searched over 3–8.** Two segments would only split on age. Personas are
+   named by their most *over-represented* answers (lift vs. the whole survey), not the most
+   common ones, which are the same in every segment.
+4. **Plain JSON artifact.** `models/segments.json` holds the centroids, feature names, scale,
+   personas and metrics. The API loads it with numpy alone (no pickle, no scikit-learn) and
+   refuses to start if its feature names don't match the code. Training is deterministic.
+
+Honest caveat: the survey's answers are only weakly correlated (median Cramér's V ≈ 0.13).
+So personas are descriptive context for the user and the LLM, not a strong recommendation
+signal by themselves.
 
 ## License
 

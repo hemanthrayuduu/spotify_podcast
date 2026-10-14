@@ -29,7 +29,6 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY app ./app
 COPY models ./models
-COPY train.py ./
 
 USER appuser
 
