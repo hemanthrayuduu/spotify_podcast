@@ -8,9 +8,9 @@ services:
     rootDir: backend
     plan: free
     buildCommand: pip install -r requirements.txt
-    # --proxy-headers: Render terminates TLS at a proxy, so without this every
-    # request appears to come from the proxy IP and shares one rate-limit bucket.
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+    # Rate limiting keys on the client IP Render appends to X-Forwarded-For
+    # (app/core/limiter.py), so no --proxy-headers here.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       # pandas / numpy ship 3.11 wheels; keep Render on 3.11.

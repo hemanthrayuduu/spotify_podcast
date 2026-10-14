@@ -88,7 +88,7 @@ The image runs as a non-root user and serves on `$PORT` (default 8000).
 
 The application is configured for deployment on:
 - Frontend: Netlify
-- Backend: Render — start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`, health check path `/health`.
+- Backend: Render — start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, health check path `/health`. Rate limiting keys on the client IP Render appends to `X-Forwarded-For` (`app/core/limiter.py`).
 
 ## Security note: model artifacts
 
