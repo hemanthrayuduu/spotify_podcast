@@ -1,0 +1,399 @@
+{
+  "fields": [
+    {
+      "name": "age",
+      "label": "Age group",
+      "multi": false,
+      "options": [
+        {
+          "value": "under_12",
+          "label": "Under 12"
+        },
+        {
+          "value": "12_19",
+          "label": "12–19"
+        },
+        {
+          "value": "20_34",
+          "label": "20–34"
+        },
+        {
+          "value": "35_59",
+          "label": "35–59"
+        },
+        {
+          "value": "60_plus",
+          "label": "60+"
+        }
+      ]
+    },
+    {
+      "name": "music_genre",
+      "label": "Music you enjoy",
+      "multi": true,
+      "options": [
+        {
+          "value": "pop",
+          "label": "Pop"
+        },
+        {
+          "value": "rock",
+          "label": "Rock"
+        },
+        {
+          "value": "hip_hop",
+          "label": "Hip-Hop / Rap"
+        },
+        {
+          "value": "melodic",
+          "label": "Melodic / Soft"
+        },
+        {
+          "value": "classical",
+          "label": "Classical"
+        },
+        {
+          "value": "jazz",
+          "label": "Jazz"
+        },
+        {
+          "value": "electronic",
+          "label": "Electronic / Dance"
+        },
+        {
+          "value": "kpop",
+          "label": "K-pop"
+        },
+        {
+          "value": "oldies",
+          "label": "Oldies / Retro"
+        },
+        {
+          "value": "rnb",
+          "label": "R&B / Soul"
+        },
+        {
+          "value": "country",
+          "label": "Country"
+        },
+        {
+          "value": "metal",
+          "label": "Metal"
+        },
+        {
+          "value": "folk",
+          "label": "Folk / Acoustic"
+        },
+        {
+          "value": "indie",
+          "label": "Indie"
+        },
+        {
+          "value": "latin",
+          "label": "Latin"
+        }
+      ]
+    },
+    {
+      "name": "podcast_content",
+      "label": "Topics that interest you",
+      "multi": true,
+      "options": [
+        {
+          "value": "comedy",
+          "label": "Comedy"
+        },
+        {
+          "value": "true_crime",
+          "label": "True Crime & Mystery"
+        },
+        {
+          "value": "sports",
+          "label": "Sports"
+        },
+        {
+          "value": "technology",
+          "label": "Technology"
+        },
+        {
+          "value": "lifestyle",
+          "label": "Lifestyle & Wellness"
+        },
+        {
+          "value": "health_fitness",
+          "label": "Health & Fitness"
+        },
+        {
+          "value": "food",
+          "label": "Food & Cooking"
+        },
+        {
+          "value": "business",
+          "label": "Business & Finance"
+        },
+        {
+          "value": "news_politics",
+          "label": "News & Politics"
+        },
+        {
+          "value": "self_help",
+          "label": "Self-Improvement"
+        },
+        {
+          "value": "spirituality",
+          "label": "Religion & Spirituality"
+        },
+        {
+          "value": "education",
+          "label": "Education & Learning"
+        },
+        {
+          "value": "fiction",
+          "label": "Fiction & Stories"
+        },
+        {
+          "value": "history",
+          "label": "History"
+        },
+        {
+          "value": "science",
+          "label": "Science"
+        },
+        {
+          "value": "arts_culture",
+          "label": "Arts & Culture"
+        },
+        {
+          "value": "tv_film",
+          "label": "TV & Film"
+        },
+        {
+          "value": "music_talk",
+          "label": "Music"
+        },
+        {
+          "value": "kids_family",
+          "label": "Kids & Family"
+        }
+      ]
+    },
+    {
+      "name": "podcast_frequency",
+      "label": "How often do you listen?",
+      "multi": false,
+      "options": [
+        {
+          "value": "daily",
+          "label": "Daily"
+        },
+        {
+          "value": "several_week",
+          "label": "Several times a week"
+        },
+        {
+          "value": "weekly",
+          "label": "Once a week"
+        },
+        {
+          "value": "rarely",
+          "label": "Rarely"
+        },
+        {
+          "value": "never",
+          "label": "I'm new to podcasts"
+        }
+      ]
+    },
+    {
+      "name": "podcast_format",
+      "label": "Preferred format",
+      "multi": false,
+      "options": [
+        {
+          "value": "storytelling",
+          "label": "Storytelling / Narrative"
+        },
+        {
+          "value": "interview",
+          "label": "Interview"
+        },
+        {
+          "value": "discussion",
+          "label": "Panel / Discussion"
+        },
+        {
+          "value": "conversational",
+          "label": "Conversational / Banter"
+        },
+        {
+          "value": "educational",
+          "label": "Educational / Explainer"
+        },
+        {
+          "value": "news",
+          "label": "News / Daily briefing"
+        },
+        {
+          "value": "any",
+          "label": "No preference"
+        }
+      ]
+    },
+    {
+      "name": "podcast_duration",
+      "label": "Preferred episode length",
+      "multi": false,
+      "options": [
+        {
+          "value": "short",
+          "label": "Short (under 15 min)"
+        },
+        {
+          "value": "medium",
+          "label": "Medium (15–30 min)"
+        },
+        {
+          "value": "long",
+          "label": "Long (30–60 min)"
+        },
+        {
+          "value": "extra_long",
+          "label": "Extra long (60+ min)"
+        },
+        {
+          "value": "any",
+          "label": "No preference"
+        }
+      ]
+    },
+    {
+      "name": "content_language",
+      "label": "Preferred language",
+      "multi": false,
+      "options": [
+        {
+          "value": "english",
+          "label": "English"
+        },
+        {
+          "value": "spanish",
+          "label": "Spanish"
+        },
+        {
+          "value": "french",
+          "label": "French"
+        },
+        {
+          "value": "german",
+          "label": "German"
+        },
+        {
+          "value": "portuguese",
+          "label": "Portuguese"
+        },
+        {
+          "value": "italian",
+          "label": "Italian"
+        },
+        {
+          "value": "hindi",
+          "label": "Hindi"
+        },
+        {
+          "value": "telugu",
+          "label": "Telugu"
+        },
+        {
+          "value": "tamil",
+          "label": "Tamil"
+        },
+        {
+          "value": "japanese",
+          "label": "Japanese"
+        },
+        {
+          "value": "korean",
+          "label": "Korean"
+        },
+        {
+          "value": "mandarin",
+          "label": "Mandarin"
+        },
+        {
+          "value": "arabic",
+          "label": "Arabic"
+        }
+      ]
+    },
+    {
+      "name": "region",
+      "label": "Content region",
+      "multi": false,
+      "options": [
+        {
+          "value": "global",
+          "label": "Global"
+        },
+        {
+          "value": "north_america",
+          "label": "North America"
+        },
+        {
+          "value": "europe",
+          "label": "Europe"
+        },
+        {
+          "value": "asia",
+          "label": "Asia"
+        },
+        {
+          "value": "south_america",
+          "label": "South America"
+        },
+        {
+          "value": "africa",
+          "label": "Africa"
+        },
+        {
+          "value": "oceania",
+          "label": "Australia / Oceania"
+        }
+      ]
+    },
+    {
+      "name": "listening_mood",
+      "label": "What are you in the mood for?",
+      "multi": false,
+      "options": [
+        {
+          "value": "learn",
+          "label": "Learn something new"
+        },
+        {
+          "value": "entertained",
+          "label": "Be entertained"
+        },
+        {
+          "value": "informed",
+          "label": "Stay informed"
+        },
+        {
+          "value": "relax",
+          "label": "Relax & unwind"
+        },
+        {
+          "value": "motivated",
+          "label": "Get motivated"
+        },
+        {
+          "value": "deep_thinking",
+          "label": "Deep thinking"
+        },
+        {
+          "value": "laugh",
+          "label": "Laugh"
+        }
+      ]
+    }
+  ]
+}

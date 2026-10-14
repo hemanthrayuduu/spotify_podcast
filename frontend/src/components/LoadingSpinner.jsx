@@ -1,7 +1,7 @@
 import React from 'react';
 import './LoadingSpinner.css';
 
-const LoadingSpinner = () => {
+const LoadingSpinner = ({ message }) => {
   return (
     <div className="loading-container">
       <div className="loading-spinner">
@@ -15,21 +15,29 @@ const LoadingSpinner = () => {
         </svg>
       </div>
       
-      <h2 className="loading-text">Curating Perfect Podcasts For You</h2>
-      <p className="loading-subtext">Our AI is analyzing your preferences to find podcasts that match your unique taste</p>
-      
-      <div className="loading-progress">
-        <div className="progress-bar"></div>
-      </div>
-      
-      <div className="loading-tags">
-        <div className="loading-tag">Analyzing preferences</div>
-        <div className="loading-tag">Searching global podcasts</div>
-        <div className="loading-tag">Finding hidden gems</div>
-        <div className="loading-tag">Matching your taste</div>
-        <div className="loading-tag">Creating recommendations</div>
-        <div className="loading-tag">Almost there...</div>
-      </div>
+      {message ? (
+        <h2 className="loading-text">{message}</h2>
+      ) : (
+        <>
+          <h2 className="loading-text">Curating Perfect Podcasts For You</h2>
+          <p className="loading-subtext">
+            The AI curator proposes shows; each one is checked against the Apple Podcasts catalog
+          </p>
+
+          <div className="loading-progress">
+            <div className="progress-bar"></div>
+          </div>
+
+          <div className="loading-tags">
+            <div className="loading-tag">Matching your survey persona</div>
+            <div className="loading-tag">Asking the AI curator</div>
+            <div className="loading-tag">Verifying shows in Apple Podcasts</div>
+            <div className="loading-tag">Checking real episode lengths</div>
+            <div className="loading-tag">Checking each feed's language</div>
+            <div className="loading-tag">Ranking your matches</div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

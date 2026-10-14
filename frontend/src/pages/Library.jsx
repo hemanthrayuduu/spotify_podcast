@@ -1,32 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { keyOf, loadSaved, publisherOf, removePodcast, spotifySearchUrl, titleOf } from '../library';
 import './Library.css';
 
-const loadSavedPodcasts = () => {
-  try {
-    const saved = localStorage.getItem('savedPodcasts');
-    return saved ? JSON.parse(saved) : [];
-  } catch (error) {
-    console.error('Error loading saved podcasts:', error);
-    return [];
-  }
-};
-
 const Library = () => {
-  const [savedPodcasts, setSavedPodcasts] = useState(loadSavedPodcasts);
-
-  const openSpotifySearch = (podcastName, creatorName) => {
-    const searchQuery = encodeURIComponent(`${podcastName} ${creatorName || ''} podcast spotify`);
-    window.open(`https://www.google.com/search?q=${searchQuery}`, '_blank');
-  };
-
-  const removePodcast = (podcastName) => {
-    const updated = savedPodcasts.filter(
-      (saved) => (saved.name || saved.title) !== podcastName
-    );
-    localStorage.setItem('savedPodcasts', JSON.stringify(updated));
-    setSavedPodcasts(updated);
-  };
+  const [savedPodcasts, setSavedPodcasts] = useState(loadSaved);
 
   return (
     <div className="library-container">
@@ -37,17 +15,21 @@ const Library = () => {
 
       {savedPodcasts.length > 0 ? (
         <div className="library-list">
-          {savedPodcasts.map((podcast, index) => {
-            const name = podcast.name || podcast.title;
-            const creator = podcast.creator || podcast.author || 'Unknown Creator';
+          {savedPodcasts.map((podcast) => {
+            const key = keyOf(podcast);
+            const title = titleOf(podcast);
+            const minutes = podcast.typical_episode_minutes;
             return (
-              <div className="library-card" key={`${name}-${index}`}>
+              <div className="library-card" key={key}>
                 <div className="library-card-header">
-                  <h3>{name}</h3>
+                  {podcast.artwork_url && (
+                    <img className="library-artwork" src={podcast.artwork_url} alt="" loading="lazy" />
+                  )}
+                  <h3>{title}</h3>
                   <button
                     className="remove-button"
-                    onClick={() => removePodcast(name)}
-                    aria-label={`Remove ${name} from library`}
+                    onClick={() => setSavedPodcasts(removePodcast(key))}
+                    aria-label={`Remove ${title} from library`}
                   >
                     <i className="fas fa-trash-alt"></i>
                   </button>
@@ -55,32 +37,35 @@ const Library = () => {
 
                 <div className="library-creator">
                   <i className="fas fa-user-circle"></i>
-                  {creator}
+                  {publisherOf(podcast)}
                 </div>
 
-                {podcast.description && (
-                  <p className="library-description">{podcast.description}</p>
+                {(podcast.summary || podcast.description) && (
+                  <p className="library-description">{podcast.summary || podcast.description}</p>
                 )}
 
                 <div className="library-meta">
-                  {(podcast.format || podcast.genre) && (
-                    <span><i className="fas fa-tag"></i> {podcast.format || podcast.genre}</span>
+                  {podcast.genres?.length > 0 && (
+                    <span><i className="fas fa-tag"></i> {podcast.genres.slice(0, 2).join(' · ')}</span>
                   )}
-                  {podcast.duration && (
-                    <span><i className="fas fa-clock"></i> {podcast.duration}</span>
-                  )}
-                  {podcast.language && (
-                    <span><i className="fas fa-language"></i> {podcast.language}</span>
-                  )}
+                  {minutes != null && <span><i className="fas fa-clock"></i> ~{minutes} min</span>}
                 </div>
 
-                <button
-                  className="spotify-link"
-                  onClick={() => openSpotifySearch(name, podcast.creator || podcast.author)}
-                >
-                  <i className="fab fa-spotify"></i>
-                  Listen on Spotify
-                </button>
+                <div className="library-links">
+                  {podcast.apple_url && (
+                    <a className="apple-link" href={podcast.apple_url} target="_blank" rel="noopener noreferrer">
+                      <i className="fas fa-podcast"></i> Apple Podcasts
+                    </a>
+                  )}
+                  <a
+                    className="spotify-link"
+                    href={podcast.spotify_url || spotifySearchUrl(title)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <i className="fab fa-spotify"></i> Search on Spotify
+                  </a>
+                </div>
               </div>
             );
           })}

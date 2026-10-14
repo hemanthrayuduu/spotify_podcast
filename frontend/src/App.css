@@ -384,3 +384,12 @@ button i, .button i {
     width: 100%;
   }
 }
+.retry-button {
+  margin-left: auto;
+  padding: 6px 14px;
+  border-radius: var(--border-radius-pill);
+  border: 1px solid var(--glass-border);
+  background: var(--element-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+}

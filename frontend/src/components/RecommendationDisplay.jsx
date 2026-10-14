@@ -1,188 +1,208 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { keyOf, loadSaved, savePodcast } from '../library';
 import './RecommendationDisplay.css';
 
-const RecommendationDisplay = ({ recommendations, onReset }) => {
-  const [savedPodcasts, setSavedPodcasts] = useState(() => {
-    try {
-      const saved = localStorage.getItem('savedPodcasts');
-      return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-      console.error('Error loading saved podcasts:', error);
-      return [];
-    }
-  });
-  
-  const [savedStatus, setSavedStatus] = useState({});
+const BREAKDOWN_LABELS = {
+  topic: 'Topic',
+  duration: 'Length',
+  endorsement: 'Curator pick',
+  freshness: 'Fresh episodes',
+};
 
-  // Function to open Google search for podcast on Spotify including creator name
-  const openSpotifySearch = (podcastName, creatorName) => {
-    // Include both podcast name and creator in the search query for more accurate results
-    const searchQuery = encodeURIComponent(`${podcastName} ${creatorName || ''} podcast spotify`);
-    window.open(`https://www.google.com/search?q=${searchQuery}`, '_blank');
-  };
-  
-  // Function to save a podcast to the library
-  const savePodcast = (podcast) => {
-    // Check if the podcast is already saved by matching name
-    const podcastName = podcast.name || podcast.title;
-    const isAlreadySaved = savedPodcasts.some(
-      saved => (saved.name || saved.title) === podcastName
-    );
-    
-    if (!isAlreadySaved) {
-      const updatedSaved = [...savedPodcasts, podcast];
-      localStorage.setItem('savedPodcasts', JSON.stringify(updatedSaved));
-      setSavedPodcasts(updatedSaved);
-      
-      // Update UI to show saved status
-      setSavedStatus({
-        ...savedStatus,
-        [podcastName]: true
-      });
-      
-      // Show a temporary success message
-      alert(`"${podcastName}" has been saved to your library!`);
-    } else {
-      alert(`"${podcastName}" is already in your library!`);
-    }
-  };
+const LANGUAGE_NAMES = new Intl.DisplayNames(['en'], { type: 'language' });
 
-  // Extract segment profile and podcast recommendations from the API response
-  const segmentProfile = recommendations?.segment_profile || {};
-  const podcasts = recommendations?.recommendations || [];
+function lastEpisodeText(isoDate) {
+  if (!isoDate) return null;
+  const days = Math.round((Date.now() - new Date(`${isoDate}T00:00:00`)) / 86_400_000);
+  if (days <= 0) return 'New episode today';
+  if (days === 1) return 'New episode yesterday';
+  if (days < 30) return `New episode ${days} days ago`;
+  return `Last episode ${new Date(`${isoDate}T00:00:00`).toLocaleDateString()}`;
+}
 
-  // Get segment name
-  const segmentName = Object.keys(segmentProfile).length > 0 
-    ? segmentProfile.segment_name || "Podcast Enthusiast" 
-    : "Podcast Enthusiast";
-
-  // Get top genres from segment profile
-  const topMusicGenre = segmentProfile.fav_music_genre 
-    ? Object.keys(segmentProfile.fav_music_genre)[0] 
-    : "Varied";
-  
-  const topPodGenre = segmentProfile.fav_pod_genre 
-    ? Object.keys(segmentProfile.fav_pod_genre)[0] 
-    : "Varied";
-
+function PersonaCard({ persona }) {
   return (
-    <div className="recommendation-container">
-      {/* Segment info section */}
-      <div className="segment-info">
-        <h2>Your Listening Profile</h2>
-        <div className="listener-personality">
-          <div className="personality-icon">
-            <i className="fas fa-headphones-alt"></i>
-          </div>
-          <div className="personality-details">
-            <h3>{segmentName}</h3>
-            <p>Based on your preferences, we've identified you as a listener who appreciates {topPodGenre.toLowerCase()} content and has an affinity for {topMusicGenre.toLowerCase()} music.</p>
-            <div className="personality-traits">
-              <span className="trait-tag">
-                <i className="fas fa-music"></i>
-                {topMusicGenre}
+    <div className="segment-info">
+      <h2>Your Listening Profile</h2>
+      <div className="listener-personality">
+        <div className="personality-icon">
+          <i className="fas fa-headphones-alt"></i>
+        </div>
+        <div className="personality-details">
+          <h3>{persona.name}</h3>
+          <p>
+            Matched from a survey of Spotify listeners: {persona.description}
+          </p>
+          <div className="personality-traits">
+            {persona.traits.map((trait) => (
+              <span key={trait.feature} className="trait-tag" title={`${Math.round(trait.share * 100)}% of this group`}>
+                {trait.label} · {trait.lift.toFixed(1)}×
               </span>
-              <span className="trait-tag">
-                <i className="fas fa-podcast"></i>
-                {topPodGenre}
-              </span>
-              <span className="trait-tag">
-                <i className="fas fa-clock"></i>
-                {recommendations?.podcast_duration || "Medium Length"}
-              </span>
-            </div>
+            ))}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Recommendations section */}
+function MatchBreakdown({ match }) {
+  return (
+    <ul className="match-breakdown" aria-label="Why this score">
+      {Object.entries(BREAKDOWN_LABELS).map(([key, label]) => {
+        const pct = Math.round(match.breakdown[key] * 100);
+        return (
+          <li key={key}>
+            <span>{`${label} ${pct}%`}</span>
+            <span className="match-bar" aria-hidden="true">
+              <span style={{ width: `${pct}%` }}></span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function PodcastCard({ podcast, saved, onSave }) {
+  const titleId = `podcast-${podcast.id}`;
+  const lastEpisode = lastEpisodeText(podcast.last_episode_date);
+  const isAi = podcast.source === 'ai';
+  return (
+    <article className="recommendation-card" aria-labelledby={titleId}>
+      <div className="podcast-info">
+        <div className="podcast-header">
+          {podcast.artwork_url && (
+            <img className="podcast-artwork" src={podcast.artwork_url} alt={podcast.title} loading="lazy" />
+          )}
+          <div className="podcast-heading">
+            <h3 id={titleId}>{podcast.title}</h3>
+            <div className="podcast-creator">
+              <i className="fas fa-user-circle"></i>
+              {podcast.publisher}
+            </div>
+            <span className="verified-badge">
+              <i className="fas fa-check-circle"></i> Verified on Apple Podcasts
+            </span>
+          </div>
+          <span className="podcast-badge" title="Match score">{`${podcast.match.score}% match`}</span>
+        </div>
+
+        {podcast.summary && (
+          <p className="podcast-description">
+            {podcast.summary} <span className="ai-label">AI-written</span>
+          </p>
+        )}
+
+        {podcast.reason && (
+          <div className="match-reason">
+            <i className={`fas ${isAi ? 'fa-magic' : 'fa-chart-line'}`}></i>
+            <span>
+              {podcast.reason}
+              {isAi && <span className="ai-label">AI-written</span>}
+            </span>
+          </div>
+        )}
+
+        <div className="podcast-meta">
+          {podcast.typical_episode_minutes != null && (
+            <div className="podcast-duration">
+              <i className="fas fa-clock"></i>
+              <span>{`~${podcast.typical_episode_minutes} min episodes`}</span>
+            </div>
+          )}
+          {lastEpisode && (
+            <div className="podcast-fresh">
+              <i className="fas fa-calendar-check"></i>
+              <span>{lastEpisode}</span>
+            </div>
+          )}
+          {podcast.genres.length > 0 && (
+            <div className="podcast-genre">
+              <i className="fas fa-tag"></i>
+              <span>{podcast.genres.slice(0, 2).join(' · ')}</span>
+            </div>
+          )}
+          {podcast.language && (
+            <div className="podcast-language">
+              <i className="fas fa-language"></i>
+              <span>{LANGUAGE_NAMES.of(podcast.language)}</span>
+            </div>
+          )}
+          {podcast.explicit && <span className="explicit-tag">Explicit</span>}
+        </div>
+
+        <MatchBreakdown match={podcast.match} />
+
+        <div className="podcast-actions">
+          <a className="apple-link" href={podcast.apple_url} target="_blank" rel="noopener noreferrer">
+            <i className="fas fa-podcast"></i> Apple Podcasts
+          </a>
+          <a className="spotify-link" href={podcast.spotify_url} target="_blank" rel="noopener noreferrer">
+            <i className="fab fa-spotify"></i> Search on Spotify
+          </a>
+          <button
+            type="button"
+            className={`save-button ${saved ? 'saved' : ''}`}
+            onClick={() => onSave(podcast)}
+            disabled={saved}
+          >
+            <i className={`${saved ? 'fas' : 'far'} fa-bookmark`}></i>
+            {saved ? 'Saved' : 'Save to Library'}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+const RecommendationDisplay = ({ data, onReset }) => {
+  const [savedKeys, setSavedKeys] = useState(() => new Set(loadSaved().map(keyOf)));
+  const { persona, recommendations, meta } = data;
+
+  const handleSave = (podcast) => {
+    setSavedKeys(new Set(savePodcast(podcast).map(keyOf)));
+  };
+
+  return (
+    <div className="recommendation-container">
+      <PersonaCard persona={persona} />
+
       <div className="recommendations">
         <h2>Your Podcast Recommendations</h2>
+
+        {meta.mode === 'catalog_only' && (
+          <div className="mode-notice" role="status">
+            <i className="fas fa-info-circle"></i> The AI curator is unavailable right now, so these
+            are top chart picks for your topics from Apple Podcasts, ranked against your answers.
+          </div>
+        )}
+
         <div className="recommendation-list">
-          {podcasts.length > 0 ? (
-            podcasts.map((podcast, index) => (
-              <div className="recommendation-card" key={index}>
-                <div className="podcast-info">
-                  <div className="podcast-header">
-                    <h3>{podcast.name || podcast.title}</h3>
-                    {podcast.match_score && (
-                      <span className="podcast-badge">{podcast.match_score}% Match</span>
-                    )}
-                  </div>
-                  
-                  <div className="podcast-creator">
-                    <i className="fas fa-user-circle"></i>
-                    {podcast.creator || podcast.author || "Unknown Creator"}
-                  </div>
-                  
-                  <p className="podcast-description">{podcast.description}</p>
-                  
-                  {(podcast.reason || podcast.match_reason) && (
-                    <div className="match-reason">
-                      <i className="fas fa-check-circle"></i>
-                      <span>{podcast.reason || podcast.match_reason}</span>
-                    </div>
-                  )}
-                  
-                  <div className="podcast-meta">
-                    {(podcast.format || podcast.genre) && (
-                      <div className="podcast-genre">
-                        <i className="fas fa-tag"></i>
-                        <span>{podcast.format || podcast.genre}</span>
-                      </div>
-                    )}
-                    {podcast.language && (
-                      <div className="podcast-language">
-                        <i className="fas fa-language"></i>
-                        <span>{podcast.language}</span>
-                      </div>
-                    )}
-                    {podcast.duration && (
-                      <div className="podcast-duration">
-                        <i className="fas fa-clock"></i>
-                        <span>{podcast.duration}</span>
-                      </div>
-                    )}
-                    {podcast.region && (
-                      <div className="podcast-region">
-                        <i className="fas fa-globe-americas"></i>
-                        <span>{podcast.region}</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="podcast-actions">
-                    <div className="podcast-link">
-                      <button 
-                        className="spotify-link"
-                        onClick={() => openSpotifySearch(
-                        podcast.name || podcast.title,
-                        podcast.creator || podcast.author
-                      )}
-                      >
-                        <i className="fab fa-spotify"></i>
-                        Listen on Spotify
-                      </button>
-                    </div>
-                    <button 
-                      className={`save-button ${savedStatus[podcast.name || podcast.title] ? 'saved' : ''}`}
-                      onClick={() => savePodcast(podcast)}
-                    >
-                      <i className={`${savedStatus[podcast.name || podcast.title] ? 'fas' : 'far'} fa-bookmark`}></i>
-                      {savedStatus[podcast.name || podcast.title] ? 'Saved to Library' : 'Save to Library'}
-                    </button>
-                  </div>
-                </div>
-              </div>
+          {recommendations.length > 0 ? (
+            recommendations.map((podcast) => (
+              <PodcastCard
+                key={podcast.id}
+                podcast={podcast}
+                saved={savedKeys.has(keyOf(podcast))}
+                onSave={handleSave}
+              />
             ))
           ) : (
             <div className="no-recommendations">
-              <p>No podcast recommendations found. Please try again with different preferences.</p>
+              <p>No verified shows matched these preferences. Try other topics or another language.</p>
             </div>
           )}
         </div>
-        
+
+        {meta.dropped_unverified > 0 && (
+          <p className="verification-note">
+            {meta.dropped_unverified} AI suggestion{meta.dropped_unverified === 1 ? '' : 's'} couldn't
+            be found in Apple Podcasts and {meta.dropped_unverified === 1 ? 'was' : 'were'} left out.
+          </p>
+        )}
+
         <div className="button-group">
           <button className="reset-button" onClick={onReset}>
             <i className="fas fa-redo"></i>
@@ -193,9 +213,12 @@ const RecommendationDisplay = ({ recommendations, onReset }) => {
             View Library
           </Link>
         </div>
-        
+
         <div className="footer-credit">
-          Developed by <a href="https://www.linkedin.com/in/hemanthrayudu/" target="_blank" rel="noopener noreferrer">Hemanth Rayudu</a>
+          Developed by{' '}
+          <a href="https://www.linkedin.com/in/hemanthrayudu/" target="_blank" rel="noopener noreferrer">
+            Hemanth Rayudu
+          </a>
         </div>
       </div>
     </div>

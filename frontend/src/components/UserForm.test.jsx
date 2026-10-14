@@ -1,54 +1,64 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { vi } from 'vitest';
 import UserForm from './UserForm';
+import options from '../test/fixtures/options.json';
+import { fillRequired } from '../test/formHelpers';
 
-// Fill every required field so the form is submittable (user-event v13 API).
-function fillRequiredFields() {
-  userEvent.selectOptions(screen.getByLabelText(/Age Group/i), '25-34');
-  userEvent.selectOptions(screen.getByLabelText(/Preferred Language/i), 'English');
-  userEvent.selectOptions(screen.getByLabelText(/Content Region/i), 'Global');
-  userEvent.selectOptions(screen.getByLabelText(/Preferred format/i), 'Interview');
-  userEvent.selectOptions(screen.getByLabelText(/Preferred length/i), 'Medium (30-60 min)');
-  userEvent.selectOptions(screen.getByLabelText(/listening mood/i), 'Be Entertained');
-  userEvent.selectOptions(screen.getByLabelText(/How often do you listen/i), 'Weekly');
-  userEvent.click(screen.getByLabelText('Science & Technology'));
-  userEvent.click(screen.getByLabelText('Pop'));
-}
+const submit = () => screen.getByRole('button', { name: /Get Personalized Recommendations/i });
 
-test('renders key form fields', () => {
-  render(<UserForm onSubmit={() => {}} isLoading={false} />);
-  expect(screen.getByLabelText(/Age Group/i)).toBeInTheDocument();
-  expect(
-    screen.getByRole('button', { name: /Get Personalized Recommendations/i })
-  ).toBeInTheDocument();
+test('renders every field from the options payload', () => {
+  render(<UserForm fields={options.fields} onSubmit={() => {}} />);
+  for (const field of options.fields) {
+    expect(screen.getByText(field.label)).toBeInTheDocument();
+  }
+  expect(screen.getByLabelText(/Podcasts you already enjoy/i)).toBeInTheDocument();
 });
 
-test('blocks submit and shows errors when genre/topic checkboxes are empty', async () => {
-  const onSubmit = jest.fn();
-  render(<UserForm onSubmit={onSubmit} isLoading={false} />);
+test('submits option values, not labels', async () => {
+  const user = userEvent.setup();
+  const onSubmit = vi.fn();
+  render(<UserForm fields={options.fields} onSubmit={onSubmit} />);
+  await fillRequired(user);
+  await user.type(screen.getByLabelText(/Podcasts you already enjoy/i), 'Radiolab');
+  await user.click(submit());
 
-  userEvent.click(
-    screen.getByRole('button', { name: /Get Personalized Recommendations/i })
-  );
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  expect(onSubmit.mock.calls[0][0]).toEqual({
+    age: '20_34',
+    music_genre: ['pop'],
+    podcast_content: ['technology'],
+    podcast_frequency: 'weekly',
+    podcast_format: 'interview',
+    podcast_duration: 'medium',
+    content_language: 'english',
+    region: 'global',
+    listening_mood: 'learn',
+    podcasts_enjoyed: 'Radiolab',
+  });
+});
+
+test('blocks submit and shows inline errors when no topic or genre is picked', async () => {
+  const user = userEvent.setup();
+  const onSubmit = vi.fn();
+  render(<UserForm fields={options.fields} onSubmit={onSubmit} />);
+  await user.click(submit());
 
   expect(await screen.findByText(/select at least one topic/i)).toBeInTheDocument();
   expect(screen.getByText(/select at least one music genre/i)).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
-test('submits the entered preferences when the form is valid', () => {
-  const onSubmit = jest.fn();
-  render(<UserForm onSubmit={onSubmit} isLoading={false} />);
+test('lists missing required fields inline instead of using alert()', async () => {
+  const user = userEvent.setup();
+  const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  const onSubmit = vi.fn();
+  render(<UserForm fields={options.fields} onSubmit={onSubmit} />);
+  await user.click(screen.getByLabelText('Technology'));
+  await user.click(screen.getByLabelText('Pop'));
+  await user.click(submit());
 
-  fillRequiredFields();
-  userEvent.click(
-    screen.getByRole('button', { name: /Get Personalized Recommendations/i })
-  );
-
-  expect(onSubmit).toHaveBeenCalledTimes(1);
-  const submitted = onSubmit.mock.calls[0][0];
-  expect(submitted.age).toBe('25-34');
-  expect(submitted.music_genre).toContain('Pop');
-  expect(submitted.podcast_content).toContain('Science & Technology');
+  expect(await screen.findByRole('alert')).toHaveTextContent(/Age group/);
+  expect(alert).not.toHaveBeenCalled();
+  expect(onSubmit).not.toHaveBeenCalled();
 });

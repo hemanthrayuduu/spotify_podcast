@@ -130,3 +130,29 @@
 .library-empty p {
   margin-bottom: var(--spacing-lg);
 }
+
+.library-artwork {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.library-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.library-links .apple-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 30px;
+  background: #ffffff;
+  color: #000;
+  font-weight: bold;
+  text-decoration: none;
+}
