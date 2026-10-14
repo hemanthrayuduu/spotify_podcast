@@ -2,7 +2,7 @@
   "persona": {
     "id": 3,
     "name": "Long-form fans · Twenty-somethings",
-    "description": "38% of surveyed listeners. Compared with the average respondent, this group over-indexes on: long-form fans (1.8×), twenty-somethings (1.4×).",
+    "description": "You share the defining traits of a group that is 38% of surveyed listeners: long-form fans (1.8× more common than average), twenty-somethings (1.4× more common than average).",
     "traits": [
       {
         "feature": "podcast_duration:long",
@@ -179,8 +179,9 @@
     "candidates_considered": 24,
     "dropped_unverified": 1,
     "dropped_language": 0,
+    "catalog_errors": 0,
     "segment_model_version": "b9126a15-k4-25375c",
     "cached": false,
-    "latency_ms": 1584
+    "latency_ms": 1178
   }
 }

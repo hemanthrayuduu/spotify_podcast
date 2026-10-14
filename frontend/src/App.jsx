@@ -60,8 +60,6 @@ function App() {
   let home;
   if (recommendations) {
     home = <RecommendationDisplay data={recommendations} onReset={handleReset} />;
-  } else if (isLoading) {
-    home = <LoadingSpinner />;
   } else if (optionsError) {
     home = (
       <ErrorBanner
@@ -80,7 +78,11 @@ function App() {
     home = (
       <>
         {error && <ErrorBanner>{error}</ErrorBanner>}
-        <UserForm fields={fields} onSubmit={handleSubmit} />
+        {isLoading && <LoadingSpinner />}
+        {/* Hidden, not unmounted, while loading: a failed request keeps the answers. */}
+        <div hidden={isLoading}>
+          <UserForm fields={fields} onSubmit={handleSubmit} />
+        </div>
       </>
     );
   }

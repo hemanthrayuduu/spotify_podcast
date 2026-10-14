@@ -72,3 +72,17 @@ test('offers a retry when the form options cannot be loaded', async () => {
   await user.click(screen.getByRole('button', { name: /try again/i }));
   expect(await screen.findByLabelText(/Age group/i)).toBeInTheDocument();
 });
+
+test('keeps the answers after a failed request so the user can retry', async () => {
+  const user = userEvent.setup();
+  mockFetch({ recommend: { status: 503, body: { detail: 'The podcast catalog is unavailable right now.' } } });
+  renderApp();
+
+  await screen.findByLabelText(/Age group/i);
+  await fillRequired(user);
+  await user.click(screen.getByRole('button', { name: /Get Personalized Recommendations/i }));
+  await screen.findByRole('alert');
+
+  expect(screen.getByLabelText(/Age group/i)).toHaveValue('20_34');
+  expect(screen.getByLabelText('Technology')).toBeChecked();
+});

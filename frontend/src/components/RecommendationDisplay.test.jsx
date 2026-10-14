@@ -71,3 +71,15 @@ test('saves a show to the library', async () => {
   expect(c.getByRole('button', { name: /saved/i })).toBeInTheDocument();
   expect(JSON.parse(localStorage.getItem('savedPodcasts'))[0].id).toBe(rec.id);
 });
+
+test('warns when catalog lookups failed and results may be incomplete', () => {
+  renderDisplay({ ...recommendAi, meta: { ...recommendAi.meta, catalog_errors: 2 } });
+  expect(screen.getByRole('status')).toHaveTextContent(/incomplete/i);
+});
+
+test('renders a persona that shares no traits with the user', () => {
+  const persona = { ...recommendAi.persona, name: 'Eclectic listener', traits: [], description: 'Your answers lean on themselves.' };
+  renderDisplay({ ...recommendAi, persona });
+  expect(screen.getByText('Eclectic listener')).toBeInTheDocument();
+  expect(screen.getByText('Your answers lean on themselves.')).toBeInTheDocument();
+});

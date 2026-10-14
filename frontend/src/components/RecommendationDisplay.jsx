@@ -31,16 +31,20 @@ function PersonaCard({ persona }) {
         </div>
         <div className="personality-details">
           <h3>{persona.name}</h3>
-          <p>
-            Matched from a survey of Spotify listeners: {persona.description}
-          </p>
-          <div className="personality-traits">
-            {persona.traits.map((trait) => (
-              <span key={trait.feature} className="trait-tag" title={`${Math.round(trait.share * 100)}% of this group`}>
-                {trait.label} · {trait.lift.toFixed(1)}×
-              </span>
-            ))}
-          </div>
+          <p>{persona.description}</p>
+          {persona.traits.length > 0 && (
+            <div className="personality-traits">
+              {persona.traits.map((trait) => (
+                <span
+                  key={trait.feature}
+                  className="trait-tag"
+                  title={`${Math.round(trait.share * 100)}% of this survey group`}
+                >
+                  {trait.label} · {trait.lift.toFixed(1)}×
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -171,6 +175,13 @@ const RecommendationDisplay = ({ data, onReset }) => {
 
       <div className="recommendations">
         <h2>Your Podcast Recommendations</h2>
+
+        {meta.catalog_errors > 0 && (
+          <div className="mode-notice" role="status">
+            <i className="fas fa-exclamation-triangle"></i> Some Apple Podcasts lookups failed, so
+            these results may be incomplete. Trying again in a minute usually helps.
+          </div>
+        )}
 
         {meta.mode === 'catalog_only' && (
           <div className="mode-notice" role="status">
