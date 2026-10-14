@@ -13,3 +13,11 @@ async def test_health_reports_models_loaded(client):
     body = response.json()
     assert body["status"] == "ok"
     assert body["models_loaded"] is True
+
+
+async def test_health_reports_llm_status(client):
+    body = (await client.get("/health")).json()
+    # Tests run without GROQ_API_KEY, so the LLM is reported as not configured.
+    assert body["llm"]["configured"] is False
+    assert body["llm"]["ok"] is False
+    assert body["llm"]["model"]

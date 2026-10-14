@@ -15,6 +15,7 @@ from app.core.limiter import limiter
 from app.core.logging import configure_logging
 from app.ml.loader import load_model_bundle
 from app.routers import health, recommend
+from app.services.llm import check_model
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
     # Fail loud here: if artifacts are missing/corrupt, startup raises.
     app.state.bundle = load_model_bundle(settings.model_dir)
     app.state.llm_client = _init_llm_client()
+    app.state.llm_status = await check_model(app.state.llm_client, settings.groq_model)
     yield
 
 

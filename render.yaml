@@ -8,7 +8,9 @@ services:
     rootDir: backend
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # --proxy-headers: Render terminates TLS at a proxy, so without this every
+    # request appears to come from the proxy IP and shares one rate-limit bucket.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
     healthCheckPath: /health
     envVars:
       # pandas / numpy ship 3.11 wheels; keep Render on 3.11.
@@ -17,8 +19,9 @@ services:
       # Secret — set the value in the Render dashboard (never commit it).
       - key: GROQ_API_KEY
         sync: false
+      # llama-3.3-70b-versatile was retired by Groq on 2026-08-16.
       - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
+        value: openai/gpt-oss-120b
       # Lock CORS to the deployed frontend origin.
       - key: ALLOWED_ORIGINS
         value: https://spotify-podcast-recommender.netlify.app

@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     )
 
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    # llama-3.3-70b-versatile was retired by Groq on 2026-08-16; gpt-oss-120b is
+    # Groq's recommended open-weight replacement.
+    groq_model: str = "openai/gpt-oss-120b"
 
     # Comma-separated in the environment; parsed into a list below.
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
