@@ -7,15 +7,15 @@ import pytest_asyncio
 from app.main import app
 
 VALID_BODY = {
-    "age": "25-34",
-    "music_genre": ["Pop", "Rock"],
-    "podcast_frequency": "Several times a week",
-    "podcast_duration": "Medium (30-60 min)",
-    "podcast_format": "Interview",
-    "podcast_content": ["Technology", "Educational"],
-    "content_language": "English",
-    "region": "Global",
-    "listening_mood": "Curious",
+    "age": "20_34",
+    "music_genre": ["pop", "rock"],
+    "podcast_frequency": "several_week",
+    "podcast_duration": "medium",
+    "podcast_format": "interview",
+    "podcast_content": ["technology", "education"],
+    "content_language": "english",
+    "region": "global",
+    "listening_mood": "learn",
 }
 
 
@@ -113,3 +113,15 @@ async def test_recommend_missing_field_returns_422(client):
     body = {k: v for k, v in VALID_BODY.items() if k != "region"}
     response = await client.post("/recommend", json=body)
     assert response.status_code == 422
+
+
+async def test_recommend_unknown_option_returns_422(client):
+    response = await client.post("/recommend", json={**VALID_BODY, "age": "25-34"})
+    assert response.status_code == 422
+    assert "20_34" in response.text  # the error lists allowed values
+
+
+async def test_recommend_returns_persona(mocked_llm):
+    data = (await mocked_llm.post("/recommend", json=VALID_BODY)).json()
+    assert data["persona"]["name"]
+    assert data["persona"]["traits"]

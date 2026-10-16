@@ -13,8 +13,8 @@ from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import configure_logging
-from app.ml.loader import load_model_bundle
-from app.routers import health, recommend
+from app.ml.segmenter import Segmenter
+from app.routers import health, options, recommend
 from app.services.llm import check_model
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def _init_llm_client() -> Optional[AsyncGroq]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Fail loud here: if artifacts are missing/corrupt, startup raises.
-    app.state.bundle = load_model_bundle(settings.model_dir)
+    app.state.segmenter = Segmenter.load(settings.model_dir)
     app.state.llm_client = _init_llm_client()
     app.state.llm_status = await check_model(app.state.llm_client, settings.groq_model)
     yield
@@ -41,7 +41,7 @@ def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI(
         title="Spotify Podcast Recommender API",
-        description="Recommends podcasts based on user preferences and a KMeans listening segment.",
+        description="Recommends podcasts based on user preferences and a survey-trained listener persona.",
         lifespan=lifespan,
     )
     app.state.limiter = limiter
@@ -54,6 +54,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health.router)
+    app.include_router(options.router)
     app.include_router(recommend.router)
     return app
 
