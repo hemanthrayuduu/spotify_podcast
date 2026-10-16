@@ -1,9 +1,16 @@
 """Shared test fixtures."""
 
-import httpx
-import pytest_asyncio
+import os
 
-from app.main import app
+# Keep tests hermetic: a developer's backend/.env may hold a real GROQ_API_KEY,
+# which would make the app call Groq at startup. Environment variables take
+# precedence over .env in pydantic-settings, so blank it before app import.
+os.environ["GROQ_API_KEY"] = ""
+
+import httpx  # noqa: E402
+import pytest_asyncio  # noqa: E402
+
+from app.main import app  # noqa: E402
 
 
 @pytest_asyncio.fixture
