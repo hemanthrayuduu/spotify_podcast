@@ -6,7 +6,7 @@ import pytest
 
 from app.core.config import Settings
 from app.services.llm import LLMError, check_model, suggest_podcasts
-from tests.llm_fakes import FakeGroq
+from tests.llm_fakes import FakeGroq, json_validate_failed
 
 LABELS = {
     "age": "20–34",
@@ -126,3 +126,40 @@ async def test_never_returns_more_than_requested():
     ]})
     suggestions = await suggest_podcasts(FakeGroq([many]), LABELS, PERSONA, "openai/gpt-oss-120b", n=8)
     assert len(suggestions) == 8
+
+
+async def test_retries_once_when_the_model_refuses_in_prose():
+    # Live failure: gpt-oss answered "I'm sorry, but I can't find enough Hindi-language
+    # interview podcasts..." and Groq's strict JSON mode rejected it with a 400.
+    client = FakeGroq([json_validate_failed(), VALID])
+    suggestions = await suggest_podcasts(client, LABELS, PERSONA, "openai/gpt-oss-120b")
+    assert len(suggestions) == 2
+    assert len(client.calls) == 2
+
+
+async def test_gives_up_after_repeated_refusals():
+    client = FakeGroq([json_validate_failed(), json_validate_failed()])
+    with pytest.raises(LLMError):
+        await suggest_podcasts(client, LABELS, PERSONA, "openai/gpt-oss-120b")
+    assert len(client.calls) == 2
+
+
+async def test_prompt_asks_for_fewer_shows_rather_than_a_refusal():
+    client = FakeGroq([VALID])
+    await suggest_podcasts(client, LABELS, PERSONA, "openai/gpt-oss-120b")
+    prompt = client.calls[0]["messages"][-1]["content"]
+    assert "return fewer" in prompt.lower()
+
+
+async def test_prompt_makes_episode_length_a_rule():
+    client = FakeGroq([VALID])
+    await suggest_podcasts(client, LABELS, PERSONA, "openai/gpt-oss-120b")
+    rules = client.calls[0]["messages"][-1]["content"].split("Rules:")[1]
+    assert "Extra long (60+ min)" in rules
+
+
+async def test_no_length_rule_without_a_preference():
+    client = FakeGroq([VALID])
+    await suggest_podcasts(client, {**LABELS, "podcast_duration": "No preference"}, PERSONA, "openai/gpt-oss-120b")
+    rules = client.calls[0]["messages"][-1]["content"].split("Rules:")[1]
+    assert "No preference" not in rules

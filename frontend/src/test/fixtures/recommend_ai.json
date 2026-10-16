@@ -1,0 +1,188 @@
+{
+  "persona": {
+    "id": 3,
+    "name": "Long-form fans · Twenty-somethings",
+    "description": "You share the defining traits of a group that is 38% of surveyed listeners: long-form fans (1.8× more common than average), twenty-somethings (1.4× more common than average).",
+    "traits": [
+      {
+        "feature": "podcast_duration:long",
+        "label": "Long-form fans",
+        "share": 0.388,
+        "lift": 1.81
+      },
+      {
+        "feature": "age:20-35",
+        "label": "Twenty-somethings",
+        "share": 0.54,
+        "lift": 1.44
+      }
+    ],
+    "share": 0.3808
+  },
+  "recommendations": [
+    {
+      "id": 1537788786,
+      "title": "The Rest Is History",
+      "publisher": "Goalhanger",
+      "artwork_url": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/bf/89/a5/bf89a586-3f77-bf37-7ba3-b75f1bca7bfa/mza_1664785978944494824.jpg/600x600bb.jpg",
+      "genres": [
+        "History"
+      ],
+      "apple_url": "https://podcasts.apple.com/gb/podcast/the-rest-is-history/id1537788786",
+      "spotify_url": "https://open.spotify.com/search/The%20Rest%20Is%20History",
+      "feed_url": "https://feeds.megaphone.fm/GLT4787413333",
+      "episode_count": 1000,
+      "typical_episode_minutes": 77,
+      "last_episode_date": "2026-10-11",
+      "explicit": false,
+      "language": "en",
+      "summary": "The Rest Is History is a long-form show from Goalhanger.",
+      "reason": "Long, story-driven episodes that match your interest in history and true crime.",
+      "source": "ai",
+      "match": {
+        "score": 92,
+        "breakdown": {
+          "topic": 1.0,
+          "duration": 1.0,
+          "endorsement": 0.6,
+          "freshness": 1.0
+        }
+      }
+    },
+    {
+      "id": 998568017,
+      "title": "Casefile True Crime",
+      "publisher": "Casefile Presents",
+      "artwork_url": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/32/81/a3/3281a345-6fa5-1d0d-b0bc-f02b0850a0ae/mza_17562537467118278179.jpeg/600x600bb.jpg",
+      "genres": [
+        "True Crime",
+        "Society & Culture",
+        "Documentary"
+      ],
+      "apple_url": "https://podcasts.apple.com/gb/podcast/casefile-true-crime/id998568017",
+      "spotify_url": "https://open.spotify.com/search/Casefile%20True%20Crime",
+      "feed_url": "https://feeds.acast.com/public/shows/679acff465f74095106abfaa",
+      "episode_count": 515,
+      "typical_episode_minutes": 100,
+      "last_episode_date": "2026-10-10",
+      "explicit": false,
+      "language": "en",
+      "summary": "Casefile True Crime is a long-form show from Casefile Presents.",
+      "reason": "Long, story-driven episodes that match your interest in history and true crime.",
+      "source": "ai",
+      "match": {
+        "score": 91,
+        "breakdown": {
+          "topic": 1.0,
+          "duration": 1.0,
+          "endorsement": 0.56,
+          "freshness": 1.0
+        }
+      }
+    },
+    {
+      "id": 1148175292,
+      "title": "In The Dark",
+      "publisher": "The New Yorker",
+      "artwork_url": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/67/d5/37/67d537b9-b27e-240b-b9a2-43c13bdfd7fb/mza_4163719876671560348.jpeg/600x600bb.jpg",
+      "genres": [
+        "True Crime",
+        "Society & Culture",
+        "Documentary"
+      ],
+      "apple_url": "https://podcasts.apple.com/gb/podcast/in-the-dark/id1148175292",
+      "spotify_url": "https://open.spotify.com/search/In%20The%20Dark",
+      "feed_url": "https://feeds.megaphone.fm/CNE3915766304",
+      "episode_count": 78,
+      "typical_episode_minutes": 58,
+      "last_episode_date": "2026-10-13",
+      "explicit": false,
+      "language": "en",
+      "summary": "In The Dark is a long-form show from The New Yorker.",
+      "reason": "Long, story-driven episodes that match your interest in history and true crime.",
+      "source": "ai",
+      "match": {
+        "score": 90,
+        "breakdown": {
+          "topic": 1.0,
+          "duration": 0.93,
+          "endorsement": 0.6,
+          "freshness": 1.0
+        }
+      }
+    },
+    {
+      "id": 1479973402,
+      "title": "You're Dead to Me",
+      "publisher": "BBC Radio 4",
+      "artwork_url": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/25/69/73/256973d0-879a-fd30-a99b-6db8d46b4dfc/mza_4030724364882202752.jpg/600x600bb.jpg",
+      "genres": [
+        "History",
+        "Comedy"
+      ],
+      "apple_url": "https://podcasts.apple.com/gb/podcast/youre-dead-to-me/id1479973402",
+      "spotify_url": "https://open.spotify.com/search/You%27re%20Dead%20to%20Me",
+      "feed_url": "https://podcasts.files.bbci.co.uk/p07mdbhg.rss",
+      "episode_count": 309,
+      "typical_episode_minutes": 60,
+      "last_episode_date": "2026-10-13",
+      "explicit": false,
+      "language": "en",
+      "summary": null,
+      "reason": "#8 in Apple Podcasts' History chart (GB).",
+      "source": "catalog",
+      "match": {
+        "score": 89,
+        "breakdown": {
+          "topic": 1.0,
+          "duration": 1.0,
+          "endorsement": 0.46,
+          "freshness": 1.0
+        }
+      }
+    },
+    {
+      "id": 1579040306,
+      "title": "Short History Of...",
+      "publisher": "NOISER",
+      "artwork_url": "https://is1-ssl.mzstatic.com/image/thumb/Podcasts112/v4/57/9e/e8/579ee81e-be15-4b29-1d13-26abd9296e88/mza_9274260941010613844.jpeg/600x600bb.jpg",
+      "genres": [
+        "History"
+      ],
+      "apple_url": "https://podcasts.apple.com/gb/podcast/short-history-of/id1579040306",
+      "spotify_url": "https://open.spotify.com/search/Short%20History%20Of...",
+      "feed_url": "https://feeds.megaphone.fm/NSR8236478683",
+      "episode_count": 302,
+      "typical_episode_minutes": 54,
+      "last_episode_date": "2026-10-11",
+      "explicit": false,
+      "language": "en",
+      "summary": null,
+      "reason": "#5 in Apple Podcasts' History chart (GB).",
+      "source": "catalog",
+      "match": {
+        "score": 85,
+        "breakdown": {
+          "topic": 1.0,
+          "duration": 0.81,
+          "endorsement": 0.52,
+          "freshness": 1.0
+        }
+      }
+    }
+  ],
+  "meta": {
+    "mode": "ai",
+    "llm_model": "openai/gpt-oss-120b",
+    "storefront": "gb",
+    "llm_candidates": 8,
+    "llm_verified": 7,
+    "candidates_considered": 24,
+    "dropped_unverified": 1,
+    "dropped_language": 0,
+    "catalog_errors": 0,
+    "segment_model_version": "b9126a15-k4-25375c",
+    "cached": false,
+    "latency_ms": 1178
+  }
+}

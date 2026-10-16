@@ -134,6 +134,7 @@ class RecommendMeta(BaseModel):
     llm_model: Optional[str]
     storefront: str
     llm_candidates: int = Field(..., description="Shows the LLM proposed")
+    llm_verified: int = Field(..., description="LLM proposals found in the Apple catalog")
     candidates_considered: int
     dropped_unverified: int = Field(..., description="LLM candidates not found in the catalog")
     dropped_language: int = Field(..., description="Shows whose feed is in another language")

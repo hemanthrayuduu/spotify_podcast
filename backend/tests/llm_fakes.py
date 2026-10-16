@@ -2,6 +2,9 @@
 
 import json
 
+import groq
+import httpx
+
 
 class _Message:
     def __init__(self, content):
@@ -59,3 +62,18 @@ def suggestions_json(*pairs):
             ]
         }
     )
+
+
+def json_validate_failed(failed_generation="I'm sorry, but I can't find enough podcasts."):
+    """The 400 Groq returns when strict JSON decoding fails (e.g. the model refuses in prose)."""
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    body = {
+        "error": {
+            "message": "Failed to generate JSON. Please adjust your prompt.",
+            "type": "invalid_request_error",
+            "code": "json_validate_failed",
+            "failed_generation": failed_generation,
+        }
+    }
+    response = httpx.Response(400, request=request, json=body)
+    return groq.BadRequestError("Error code: 400", response=response, body=body)

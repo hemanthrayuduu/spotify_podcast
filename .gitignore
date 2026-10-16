@@ -19,6 +19,10 @@ yarn-error.log
 
 # Frontend build output
 frontend/build/
+frontend/dist/
+
+# Local agent workspace
+.superpowers/
 
 # Local Netlify state
 .netlify/

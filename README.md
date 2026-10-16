@@ -17,7 +17,8 @@ Spotify Podcast Recommender analyzes user preferences and listening habits to pr
 ## Technology Stack
 
 ### Frontend
-- React.js for component-based UI
+- React 19 + React Router 7, built with Vite and tested with Vitest
+- The form is rendered from `GET /options`, so it always matches the API
 - CSS with modern features (glassmorphism, animations, responsive design)
 - LocalStorage for client-side podcast saving
 
@@ -30,8 +31,8 @@ Spotify Podcast Recommender analyzes user preferences and listening habits to pr
 ## Installation
 
 ### Prerequisites
-- Node.js (v16+)
-- Python (v3.9+)
+- Node.js 22.12+ (CI and Netlify use Node 24)
+- Python 3.11+
 - Groq API key (free at https://console.groq.com)
 
 ### Backend Setup
@@ -52,7 +53,9 @@ python train.py
 ```bash
 cd frontend
 npm install
-npm start
+npm run dev      # http://localhost:3000, talks to VITE_API_URL (default http://localhost:8000)
+npm test         # Vitest
+npm run build    # outputs dist/
 ```
 
 ## Usage

@@ -1,390 +1,226 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './UserForm.css';
-import LoadingSpinner from './LoadingSpinner';
 
-const UserForm = ({ onSubmit, isLoading }) => {
-  const [formData, setFormData] = useState({
-    age: "",
-    music_genre: [],
-    podcast_frequency: "",
-    podcast_duration: "",
-    podcast_format: "",
-    podcast_content: [],
-    content_language: "English",
-    region: "",
-    podcasts_enjoyed: "",
-    listening_mood: "",
-  });
-  
-  const [errors, setErrors] = useState({
-    music_genre: false,
-    podcast_content: false
-  });
-  
+// Layout only: the fields, labels and options themselves come from GET /options.
+const SECTIONS = [
+  { title: 'Key Information', icon: 'fa-info-circle', fields: ['age', 'content_language', 'region'] },
+  {
+    title: 'Content Preferences',
+    icon: 'fa-podcast',
+    fields: ['podcast_content', 'podcast_format', 'podcast_duration', 'listening_mood'],
+  },
+  {
+    title: 'Your Listening Habits',
+    icon: 'fa-headphones-alt',
+    fields: ['music_genre', 'podcast_frequency'],
+  },
+];
+
+const ICONS = {
+  age: 'fa-user',
+  content_language: 'fa-language',
+  region: 'fa-globe-americas',
+  podcast_content: 'fa-list-ul',
+  podcast_format: 'fa-microphone-alt',
+  podcast_duration: 'fa-clock',
+  listening_mood: 'fa-smile',
+  music_genre: 'fa-music',
+  podcast_frequency: 'fa-calendar-alt',
+};
+
+const HELP = {
+  content_language: 'Only shows whose feed is in this language are recommended',
+  region: 'Which Apple Podcasts storefront to search',
+  podcast_content: 'Select all topics that interest you',
+  podcast_duration: 'Matched against real episode lengths',
+  music_genre: 'Used to match you with similar survey listeners',
+};
+
+const MULTI_ERRORS = {
+  podcast_content: 'Please select at least one topic',
+  music_genre: 'Please select at least one music genre',
+};
+
+const DEFAULTS = { content_language: 'english' };
+
+const initialValues = (fields) =>
+  Object.fromEntries(fields.map((f) => [f.name, f.multi ? [] : DEFAULTS[f.name] ?? '']));
+
+// Fields the layout doesn't know about still render, in the last section.
+function layout(fields) {
+  const byName = Object.fromEntries(fields.map((f) => [f.name, f]));
+  const placed = new Set(SECTIONS.flatMap((s) => s.fields));
+  const extra = fields.filter((f) => !placed.has(f.name)).map((f) => f.name);
+  return SECTIONS.map((section, i) => ({
+    ...section,
+    fields: [...section.fields, ...(i === SECTIONS.length - 1 ? extra : [])]
+      .map((name) => byName[name])
+      .filter(Boolean),
+  }));
+}
+
+const UserForm = ({ fields, onSubmit }) => {
+  const [values, setValues] = useState(() => initialValues(fields));
+  const [podcastsEnjoyed, setPodcastsEnjoyed] = useState('');
+  const [multiErrors, setMultiErrors] = useState({});
+  const [missing, setMissing] = useState([]);
   const musicNotesRef = useRef(null);
-  
+
   // Create floating music notes animation
   useEffect(() => {
-    if (!musicNotesRef.current) return;
-    
     const container = musicNotesRef.current;
+    if (!container) return;
     const noteSymbols = ['♪', '♫', '𝅘𝅥𝅮', '𝄞', '𝅗𝅥', '𝅘𝅥𝅯'];
-    const noteCount = 12;
-    
-    // Remove any existing notes
-    while (container.firstChild) {
-      container.removeChild(container.firstChild);
-    }
-    
-    // Create new notes
-    for (let i = 0; i < noteCount; i++) {
+    container.replaceChildren();
+    for (let i = 0; i < 12; i++) {
       const note = document.createElement('div');
       note.className = 'music-note';
       note.textContent = noteSymbols[Math.floor(Math.random() * noteSymbols.length)];
-      
-      // Random position
       note.style.left = `${Math.random() * 100}%`;
       note.style.top = `${Math.random() * 100}%`;
-      
-      // Random movement direction
-      note.style.setProperty('--move-x', `${(Math.random() * 200) - 100}px`);
-      note.style.setProperty('--move-y', `${(Math.random() * -200) - 50}px`);
-      note.style.setProperty('--rotate', `${(Math.random() * 360)}deg`);
-      
-      // Random animation duration and delay
-      note.style.animationDuration = `${8 + (Math.random() * 10)}s`;
+      note.style.setProperty('--move-x', `${Math.random() * 200 - 100}px`);
+      note.style.setProperty('--move-y', `${Math.random() * -200 - 50}px`);
+      note.style.setProperty('--rotate', `${Math.random() * 360}deg`);
+      note.style.animationDuration = `${8 + Math.random() * 10}s`;
       note.style.animationDelay = `${Math.random() * 5}s`;
-      
       container.appendChild(note);
     }
   }, []);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
+  const setValue = (name, value) => setValues((prev) => ({ ...prev, [name]: value }));
 
-  // Handler for checkbox changes
-  const handleCheckboxChange = (e, category) => {
-    const { value, checked } = e.target;
-    
-    setFormData((prev) => {
-      const newValues = checked 
-        ? [...prev[category], value] 
-        : prev[category].filter(item => item !== value);
-      
-      // Clear error when at least one item is selected
-      if (newValues.length > 0) {
-        setErrors(prev => ({
-          ...prev,
-          [category]: false
-        }));
-      }
-      
-      return {
-        ...prev,
-        [category]: newValues
-      };
-    });
+  const toggle = (name, value, checked) => {
+    const next = checked ? [...values[name], value] : values[name].filter((v) => v !== value);
+    setValue(name, next);
+    if (next.length) setMultiErrors((prev) => ({ ...prev, [name]: false }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
-    // Validate that at least one option is selected for multi-select fields
-    const newErrors = {
-      music_genre: formData.music_genre.length === 0,
-      podcast_content: formData.podcast_content.length === 0
-    };
-    
-    setErrors(newErrors);
-    
-    // Only submit if no errors
-    if (!newErrors.music_genre && !newErrors.podcast_content) {
-      // Ensure arrays are properly formatted
-      const dataToSubmit = {
-        ...formData,
-        music_genre: formData.music_genre.filter(Boolean), // Remove any empty strings
-        podcast_content: formData.podcast_content.filter(Boolean) // Remove any empty strings
-      };
-      
-      // Verify the required fields are present and valid
-      const requiredFields = [
-        'age', 'music_genre', 'podcast_frequency', 'podcast_duration', 
-        'podcast_format', 'podcast_content', 'content_language', 'region', 
-        'listening_mood'
-      ];
-      
-      const missingFields = requiredFields.filter(field => {
-        if (Array.isArray(dataToSubmit[field])) {
-          return dataToSubmit[field].length === 0;
-        }
-        return !dataToSubmit[field];
-      });
-      
-      if (missingFields.length > 0) {
-        console.error("Missing required fields:", missingFields);
-        alert(`Please fill in all required fields: ${missingFields.join(', ')}`);
-        return;
-      }
-      
-      onSubmit(dataToSubmit);
-    } else {
-      // Scroll to the first error
-      if (newErrors.podcast_content) {
-        document.getElementById('podcast-content-group').scrollIntoView({ behavior: 'smooth' });
-      } else if (newErrors.music_genre) {
-        document.getElementById('music-genre-group').scrollIntoView({ behavior: 'smooth' });
-      }
+    const emptyMulti = Object.fromEntries(
+      fields.filter((f) => f.multi).map((f) => [f.name, values[f.name].length === 0])
+    );
+    const missingSingles = fields.filter((f) => !f.multi && !values[f.name]);
+    setMultiErrors(emptyMulti);
+    setMissing(missingSingles.map((f) => f.label));
+
+    const firstEmpty = Object.keys(emptyMulti).find((name) => emptyMulti[name]);
+    if (firstEmpty) {
+      document.getElementById(`${firstEmpty}-group`)?.scrollIntoView({ behavior: 'smooth' });
+      return;
     }
+    if (missingSingles.length) return;
+    onSubmit({ ...values, podcasts_enjoyed: podcastsEnjoyed.trim() });
   };
 
-  // Form options
-  const ageOptions = ["18-24", "25-34", "35-44", "45-54", "55+"];
-  const musicGenreOptions = ["Pop", "Rock", "Hip-Hop", "Electronic", "Jazz", "Classical", "Country", "R&B", "Metal", "Folk", "Indie"];
-  const podFrequencyOptions = ["Daily", "Several times a week", "Weekly", "Monthly", "Rarely"];
-  const podDurationOptions = ["Short (< 30 min)", "Medium (30-60 min)", "Long (> 60 min)"];
-  const podFormatOptions = ["Interview", "Solo", "Panel discussion", "Narrative/Storytelling", "Educational", "News/Current events"];
-  const podContentOptions = ["Science & Technology", "Business & Finance", "Art & Culture", "News & Politics", "Health & Wellness", "Education", "Entertainment", "Sports", "True Crime", "History", "Philosophy", "Comedy"];
-  const languageOptions = ["English", "Spanish", "French", "German", "Mandarin", "Hindi", "Japanese", "Korean", "Portuguese", "Russian", "Arabic", "Italian"];
-  const regionOptions = ["North America", "Europe", "Asia", "South America", "Africa", "Australia/Oceania", "Global"];
-  const moodOptions = ["Learn Something New", "Be Entertained", "Stay Informed", "Relax & Unwind", "Get Motivated", "Deep Thinking", "Laugh"];
+  const renderField = (field) => {
+    const label = (
+      <>
+        <i className={`fas ${ICONS[field.name] || 'fa-circle'}`}></i> {field.label}
+      </>
+    );
+    const help = HELP[field.name] && <small className="form-help">{HELP[field.name]}</small>;
 
-  if (isLoading) {
-    return <LoadingSpinner />;
-  }
+    if (field.multi) {
+      return (
+        <div
+          key={field.name}
+          id={`${field.name}-group`}
+          className={`form-group ${multiErrors[field.name] ? 'error' : ''}`}
+          role="group"
+          aria-labelledby={`${field.name}-label`}
+        >
+          <span id={`${field.name}-label`} className="group-label">{label}</span>
+          <div className="checkbox-group">
+            {field.options.map((option) => {
+              const id = `${field.name}-${option.value}`;
+              return (
+                <div key={option.value} className="checkbox-item">
+                  <input
+                    type="checkbox"
+                    id={id}
+                    value={option.value}
+                    checked={values[field.name].includes(option.value)}
+                    onChange={(e) => toggle(field.name, option.value, e.target.checked)}
+                  />
+                  <label htmlFor={id}>{option.label}</label>
+                </div>
+              );
+            })}
+          </div>
+          {multiErrors[field.name] && (
+            <div className="error-message">
+              {MULTI_ERRORS[field.name] || 'Please select at least one option'}
+            </div>
+          )}
+          {help}
+        </div>
+      );
+    }
+
+    return (
+      <div key={field.name} className="form-group">
+        <label htmlFor={field.name}>{label}</label>
+        <select
+          id={field.name}
+          name={field.name}
+          value={values[field.name]}
+          onChange={(e) => setValue(field.name, e.target.value)}
+        >
+          <option value="">Select…</option>
+          {field.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {help}
+      </div>
+    );
+  };
 
   return (
     <div className="form-container">
       <div className="music-notes" ref={musicNotesRef}></div>
-      
+
       <div className="form-header">
         <h2>Find Your <span>Perfect Podcast</span></h2>
-        <p>Quick form - takes less than a minute to get personalized recommendations</p>
+        <p>Quick form — every recommendation is a real show, verified in Apple Podcasts</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="user-form">
-        <div className="form-section">
-          <h3>
-            <i className="fas fa-info-circle form-section-icon"></i>
-            Key Information
-          </h3>
-          
-          <div className="form-group">
-            <label htmlFor="age">Age Group</label>
-            <select
-              id="age"
-              name="age"
-              value={formData.age}
-              onChange={handleChange}
-              required
-            >
-              <option value="">Select age group</option>
-              {ageOptions.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="content_language">
-                <i className="fas fa-language"></i> Preferred Language
-              </label>
-              <select
-                id="content_language"
-                name="content_language"
-                value={formData.content_language}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select language</option>
-                {languageOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-              <small className="form-help">Language you prefer to listen in</small>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="region">
-                <i className="fas fa-globe-americas"></i> Content Region
-              </label>
-              <select
-                id="region"
-                name="region"
-                value={formData.region}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select region</option>
-                {regionOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-              <small className="form-help">Region whose content you're interested in</small>
-            </div>
-          </div>
-        </div>
-
-        <div className="form-section">
-          <h3>
-            <i className="fas fa-podcast form-section-icon"></i>
-            Content Preferences
-          </h3>
-          
-          <div id="podcast-content-group" className={`form-group ${errors.podcast_content ? 'error' : ''}`}>
-            <label>
-              <i className="fas fa-list-ul"></i> What topics interest you?
-            </label>
-            <div className="checkbox-group">
-              {podContentOptions.map(option => (
-                <div key={option} className="checkbox-item">
-                  <input
-                    type="checkbox"
-                    id={`content-${option}`}
-                    value={option}
-                    checked={formData.podcast_content.includes(option)}
-                    onChange={(e) => handleCheckboxChange(e, "podcast_content")}
-                  />
-                  <label htmlFor={`content-${option}`}>{option}</label>
-                </div>
-              ))}
-            </div>
-            {errors.podcast_content && (
-              <div className="error-message">Please select at least one topic</div>
+      <form onSubmit={handleSubmit} className="user-form" noValidate>
+        {layout(fields).map((section, i) => (
+          <div key={section.title} className="form-section">
+            <h3>
+              <i className={`fas ${section.icon} form-section-icon`}></i>
+              {section.title}
+            </h3>
+            {section.fields.map(renderField)}
+            {i === SECTIONS.length - 1 && (
+              <div className="form-group">
+                <label htmlFor="podcasts_enjoyed">
+                  <i className="fas fa-heart"></i> Podcasts you already enjoy (optional)
+                </label>
+                <textarea
+                  id="podcasts_enjoyed"
+                  value={podcastsEnjoyed}
+                  maxLength={500}
+                  onChange={(e) => setPodcastsEnjoyed(e.target.value)}
+                  placeholder="Comma-separated, e.g. Serial, Radiolab, The Daily"
+                  rows="2"
+                  className="text-input"
+                ></textarea>
+                <small className="form-help">We'll find similar shows and skip these ones</small>
+              </div>
             )}
-            <small className="form-help">Select all topics that interest you</small>
           </div>
+        ))}
 
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="podcast_format">
-                <i className="fas fa-microphone-alt"></i> Preferred format
-              </label>
-              <select
-                id="podcast_format"
-                name="podcast_format"
-                value={formData.podcast_format}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select format</option>
-                {podFormatOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-              <small className="form-help">How you like content presented</small>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="podcast_duration">
-                <i className="fas fa-clock"></i> Preferred length
-              </label>
-              <select
-                id="podcast_duration"
-                name="podcast_duration"
-                value={formData.podcast_duration}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select length</option>
-                {podDurationOptions.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-              <small className="form-help">How long you like your podcasts</small>
-            </div>
+        {missing.length > 0 && (
+          <div className="form-missing" role="alert">
+            Please fill in: {missing.join(', ')}
           </div>
-
-          <div className="form-group">
-            <label htmlFor="listening_mood">
-              <i className="fas fa-smile"></i> What's your listening mood?
-            </label>
-            <select
-              id="listening_mood"
-              name="listening_mood"
-              value={formData.listening_mood}
-              onChange={handleChange}
-              required
-            >
-              <option value="">Select your mood</option>
-              {moodOptions.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-            <small className="form-help">What you're looking to get from podcasts right now</small>
-          </div>
-        </div>
-
-        <div className="form-section">
-          <h3>
-            <i className="fas fa-headphones-alt form-section-icon"></i>
-            Your Listening Habits
-          </h3>
-          
-          <div id="music-genre-group" className={`form-group ${errors.music_genre ? 'error' : ''}`}>
-            <label>
-              <i className="fas fa-music"></i> Music you enjoy
-            </label>
-            <div className="checkbox-group">
-              {musicGenreOptions.map(option => (
-                <div key={option} className="checkbox-item">
-                  <input
-                    type="checkbox"
-                    id={`music-${option}`}
-                    value={option}
-                    checked={formData.music_genre.includes(option)}
-                    onChange={(e) => handleCheckboxChange(e, "music_genre")}
-                  />
-                  <label htmlFor={`music-${option}`}>{option}</label>
-                </div>
-              ))}
-            </div>
-            {errors.music_genre && (
-              <div className="error-message">Please select at least one music genre</div>
-            )}
-            <small className="form-help">Select all genres you enjoy</small>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="podcast_frequency">
-              <i className="fas fa-calendar-alt"></i> How often do you listen?
-            </label>
-            <select
-              id="podcast_frequency"
-              name="podcast_frequency"
-              value={formData.podcast_frequency}
-              onChange={handleChange}
-              required
-            >
-              <option value="">Select frequency</option>
-              {podFrequencyOptions.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-            <small className="form-help">Your typical podcast consumption</small>
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="podcasts_enjoyed">
-              <i className="fas fa-heart"></i> Podcasts you already enjoy (optional)
-            </label>
-            <textarea
-              id="podcasts_enjoyed"
-              name="podcasts_enjoyed"
-              value={formData.podcasts_enjoyed}
-              onChange={handleChange}
-              placeholder="List podcasts you already like (e.g., 'Serial, Radiolab, The Daily')"
-              rows="2"
-              className="text-input"
-            ></textarea>
-            <small className="form-help">Helps us find similar content you might like</small>
-          </div>
-        </div>
+        )}
 
         <div className="form-submit">
           <button type="submit" className="submit-button">
@@ -392,9 +228,12 @@ const UserForm = ({ onSubmit, isLoading }) => {
             <span>Get Personalized Recommendations</span>
           </button>
         </div>
-        
+
         <div className="footer-credit">
-          Developed by <a href="https://www.linkedin.com/in/hemanthrayudu/" target="_blank" rel="noopener noreferrer">Hemanth Rayudu</a>
+          Developed by{' '}
+          <a href="https://www.linkedin.com/in/hemanthrayudu/" target="_blank" rel="noopener noreferrer">
+            Hemanth Rayudu
+          </a>
         </div>
       </form>
     </div>

@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from groq import AsyncGroq
+from groq import AsyncGroq, BadRequestError
 from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,14 @@ _SUGGESTION_SCHEMA = {
     "required": ["candidates"],
     "additionalProperties": False,
 }
+
+
+def _is_json_generation_failure(exc: Exception) -> bool:
+    """Groq's 400 when strict JSON decoding fails, e.g. the model refused in prose."""
+    if not isinstance(exc, BadRequestError) or not isinstance(exc.body, dict):
+        return False
+    error = exc.body.get("error")
+    return isinstance(error, dict) and error.get("code") == "json_validate_failed"
 
 
 def _is_reasoning_model(model: str) -> bool:
@@ -119,7 +127,16 @@ def _build_prompt(labels: Dict[str, Any], persona: Dict[str, Any], n: int) -> st
         "exact official show title and the host or publisher as listed there. Never invent a show.",
         "- Prefer shows that are still publishing new episodes.",
         f"- Every show must be in {labels['content_language']}.",
+    ]
+    if labels["podcast_duration"] != "No preference":
+        lines.append(
+            f"- Typical episodes should be {labels['podcast_duration']}; skip shows whose "
+            "episodes usually run much shorter or longer."
+        )
+    lines += [
         "- Mix well-known and lesser-known shows; at most one show per publisher.",
+        f"- If you can't name {n} real shows that fit, return fewer (even none) rather than "
+        "explaining; never answer in prose.",
         '- "summary": one factual sentence about what the show is.',
         '- "reason": one sentence on why it fits this listener, referring to their answers.',
         "",
@@ -165,6 +182,9 @@ async def suggest_podcasts(
                 **_request_kwargs(model),
             )
         except Exception as exc:  # noqa: BLE001 - surfaced as LLMError; caller degrades
+            if _is_json_generation_failure(exc):
+                problem = exc  # sampling again usually yields valid JSON
+                continue
             raise LLMError(f"Groq request failed (model={model}): {exc}") from exc
         try:
             parsed = _Suggestions.model_validate(json.loads(response.choices[0].message.content))
