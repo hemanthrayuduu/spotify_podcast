@@ -169,3 +169,21 @@ async def test_no_length_rule_without_a_preference():
     await suggest_podcasts(client, {**LABELS, "podcast_duration": "No preference"}, PERSONA, "openai/gpt-oss-120b")
     rules = client.calls[0]["messages"][-1]["content"].split("Rules:")[1]
     assert "No preference" not in rules
+
+
+async def test_prompt_asks_for_reasons_addressed_to_the_user():
+    # Live output read "...match the listener's interest in learning new things";
+    # the UI shows reasons to the user, so they should say "you".
+    client = FakeGroq([VALID])
+    await suggest_podcasts(client, LABELS, PERSONA, "openai/gpt-oss-120b")
+    rules = client.calls[0]["messages"][-1]["content"].split("Rules:")[1]
+    assert 'address the listener as "you"' in rules
+
+
+async def test_prompt_keeps_episode_lengths_out_of_reasons():
+    # The model claimed "long interview episodes" for Science Friday (~18 min real);
+    # the UI shows the real catalog length, so reasons must not assert one.
+    client = FakeGroq([VALID])
+    await suggest_podcasts(client, LABELS, PERSONA, "openai/gpt-oss-120b")
+    rules = client.calls[0]["messages"][-1]["content"].split("Rules:")[1]
+    assert "don't state or describe episode length" in rules.lower()

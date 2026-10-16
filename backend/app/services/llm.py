@@ -144,7 +144,9 @@ def _build_prompt(labels: Dict[str, Any], persona: Dict[str, Any], n: int) -> st
         f"- If you can't name {n} real shows that fit, return fewer (even none) rather than "
         "explaining; never answer in prose.",
         '- "summary": one factual sentence about what the show is.',
-        '- "reason": one sentence on why it fits this listener, referring to their answers.',
+        '- "reason": one sentence, shown to the listener, on why it fits; address the listener '
+        'as "you" and refer to their answers. Don\'t state or describe episode length '
+        '("long", "30-minute"): the app shows the real length from the catalog.',
         "",
         'Respond with JSON: {"candidates": [{"title": ..., "host": ..., "summary": ..., '
         '"reason": ...}]}',
