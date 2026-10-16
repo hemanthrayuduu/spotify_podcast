@@ -21,13 +21,16 @@ class Option:
     label: str
     # Cleaned survey category this option maps to; None = not a segment feature.
     code: Optional[str] = None
-    # podcast_content: iTunes search term and Apple Podcasts genre names.
-    search_term: Optional[str] = None
+    # podcast_content: Apple Podcasts chart genre id and the genre names that
+    # count as a topic match (ids verified against live iTunes lookups).
+    chart_genre_id: Optional[int] = None
     apple_genres: Tuple[str, ...] = ()
     # podcast_duration: preferred episode length in minutes (upper None = open).
     minutes: Optional[Tuple[int, Optional[int]]] = None
     # content_language / region: Apple storefront (ISO country) to search in.
     storefront: Optional[str] = None
+    # content_language: ISO 639-1 code, checked against each feed's <language>.
+    iso_language: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -94,44 +97,44 @@ FIELDS: Dict[str, Field] = {
             ),
             options=(
                 Option("comedy", "Comedy", code="comedy",
-                       search_term="comedy", apple_genres=("Comedy", "Comedy Interviews", "Improv", "Stand-Up")),
+                       chart_genre_id=1303, apple_genres=("Comedy", "Comedy Interviews", "Improv", "Stand-Up")),
                 Option("true_crime", "True Crime & Mystery", code="true_crime",
-                       search_term="true crime", apple_genres=("True Crime",)),
+                       chart_genre_id=1488, apple_genres=("True Crime",)),
                 Option("sports", "Sports", code="sports",
-                       search_term="sports", apple_genres=("Sports",)),
+                       chart_genre_id=1545, apple_genres=("Sports",)),
                 Option("technology", "Technology", code="technology",
-                       search_term="technology", apple_genres=("Technology",)),
+                       chart_genre_id=1318, apple_genres=("Technology",)),
                 Option("lifestyle", "Lifestyle & Wellness", code="lifestyle",
-                       search_term="lifestyle wellness",
-                       apple_genres=("Leisure", "Alternative Health", "Mental Health", "Relationships")),
+                       chart_genre_id=1517,
+                       apple_genres=("Mental Health", "Alternative Health", "Leisure", "Relationships")),
                 Option("health_fitness", "Health & Fitness", code="health_fitness",
-                       search_term="health fitness", apple_genres=("Health & Fitness", "Fitness", "Nutrition")),
+                       chart_genre_id=1512, apple_genres=("Health & Fitness", "Fitness", "Nutrition")),
                 Option("food", "Food & Cooking", code="food",
-                       search_term="food cooking", apple_genres=("Food",)),
+                       chart_genre_id=1306, apple_genres=("Food",)),
                 Option("business", "Business & Finance", code="business",
-                       search_term="business", apple_genres=("Business", "Investing", "Entrepreneurship")),
+                       chart_genre_id=1321, apple_genres=("Business", "Investing", "Entrepreneurship")),
                 Option("news_politics", "News & Politics", code="news_politics",
-                       search_term="news politics", apple_genres=("News", "Politics", "Daily News")),
+                       chart_genre_id=1489, apple_genres=("News", "Politics", "Daily News")),
                 Option("self_help", "Self-Improvement", code="self_help",
-                       search_term="self improvement", apple_genres=("Self-Improvement",)),
+                       chart_genre_id=1500, apple_genres=("Self-Improvement",)),
                 Option("spirituality", "Religion & Spirituality", code="spirituality",
-                       search_term="spirituality", apple_genres=("Religion & Spirituality", "Spirituality")),
+                       chart_genre_id=1314, apple_genres=("Religion & Spirituality", "Spirituality")),
                 Option("education", "Education & Learning", code="education",
-                       search_term="learning", apple_genres=("Education", "Courses", "How To")),
+                       chart_genre_id=1304, apple_genres=("Education", "Courses", "How To")),
                 Option("fiction", "Fiction & Stories", code="fiction",
-                       search_term="stories fiction", apple_genres=("Fiction", "Drama", "Comedy Fiction")),
+                       chart_genre_id=1483, apple_genres=("Fiction", "Drama", "Comedy Fiction")),
                 Option("history", "History",
-                       search_term="history", apple_genres=("History",)),
+                       chart_genre_id=1487, apple_genres=("History",)),
                 Option("science", "Science",
-                       search_term="science", apple_genres=("Science",)),
+                       chart_genre_id=1533, apple_genres=("Science",)),
                 Option("arts_culture", "Arts & Culture",
-                       search_term="arts culture", apple_genres=("Arts", "Society & Culture", "Books")),
+                       chart_genre_id=1301, apple_genres=("Arts", "Society & Culture", "Books")),
                 Option("tv_film", "TV & Film",
-                       search_term="movies tv", apple_genres=("TV & Film", "Film Reviews", "TV Reviews")),
+                       chart_genre_id=1309, apple_genres=("TV & Film", "Film Reviews", "TV Reviews")),
                 Option("music_talk", "Music",
-                       search_term="music", apple_genres=("Music", "Music Commentary", "Music History")),
+                       chart_genre_id=1310, apple_genres=("Music", "Music Commentary", "Music History")),
                 Option("kids_family", "Kids & Family",
-                       search_term="kids family", apple_genres=("Kids & Family",)),
+                       chart_genre_id=1305, apple_genres=("Kids & Family",)),
             ),
         ),
         Field(
@@ -177,19 +180,19 @@ FIELDS: Dict[str, Field] = {
             label="Preferred language",
             options=(
                 # English searches the storefront chosen by region instead.
-                Option("english", "English"),
-                Option("spanish", "Spanish", storefront="es"),
-                Option("french", "French", storefront="fr"),
-                Option("german", "German", storefront="de"),
-                Option("portuguese", "Portuguese", storefront="br"),
-                Option("italian", "Italian", storefront="it"),
-                Option("hindi", "Hindi", storefront="in"),
-                Option("telugu", "Telugu", storefront="in"),
-                Option("tamil", "Tamil", storefront="in"),
-                Option("japanese", "Japanese", storefront="jp"),
-                Option("korean", "Korean", storefront="kr"),
-                Option("mandarin", "Mandarin", storefront="tw"),
-                Option("arabic", "Arabic", storefront="sa"),
+                Option("english", "English", iso_language="en"),
+                Option("spanish", "Spanish", storefront="es", iso_language="es"),
+                Option("french", "French", storefront="fr", iso_language="fr"),
+                Option("german", "German", storefront="de", iso_language="de"),
+                Option("portuguese", "Portuguese", storefront="br", iso_language="pt"),
+                Option("italian", "Italian", storefront="it", iso_language="it"),
+                Option("hindi", "Hindi", storefront="in", iso_language="hi"),
+                Option("telugu", "Telugu", storefront="in", iso_language="te"),
+                Option("tamil", "Tamil", storefront="in", iso_language="ta"),
+                Option("japanese", "Japanese", storefront="jp", iso_language="ja"),
+                Option("korean", "Korean", storefront="kr", iso_language="ko"),
+                Option("mandarin", "Mandarin", storefront="tw", iso_language="zh"),
+                Option("arabic", "Arabic", storefront="sa", iso_language="ar"),
             ),
         ),
         Field(

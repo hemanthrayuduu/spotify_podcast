@@ -9,6 +9,8 @@ from app.main import app
 @pytest_asyncio.fixture
 async def client():
     """An HTTP client bound to the app, with the lifespan (model load) run."""
+    # Tests make far more requests than the per-IP limit allows.
+    app.state.limiter.enabled = False
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:

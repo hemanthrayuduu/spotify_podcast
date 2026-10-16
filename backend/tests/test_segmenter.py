@@ -7,7 +7,7 @@ import pytest
 
 from app.core.config import settings
 from app.ml.features import FEATURE_NAMES, codes_from_prefs, encode
-from app.ml.segmenter import SCHEMA_VERSION, Segmenter
+from app.ml.segmenter import SCHEMA_VERSION, Segmenter, personalize
 
 
 def _artifact():
@@ -74,3 +74,42 @@ def test_committed_artifact_has_at_least_three_personas():
     # Silhouette favours k=2 on this weakly-structured survey, which yields a
     # bare age split; training searches k >= 3 so personas are informative.
     assert len(Segmenter.load(settings.model_dir).personas) >= 3
+
+
+PERSONA = {
+    "id": 0, "name": "Mid-career listeners · Long-form fans", "share": 0.24, "description": "x",
+    "traits": [
+        {"feature": "age:35-60", "label": "Mid-career listeners", "share": 0.85, "lift": 3.3},
+        {"feature": "podcast_duration:long", "label": "Long-form fans", "share": 0.28, "lift": 1.3},
+    ],
+}
+
+
+def test_personalize_keeps_only_traits_the_user_shares():
+    codes = codes_from_prefs({"age": "35_59", "podcast_duration": "short", "music_genre": [],
+                              "podcast_content": [], "podcast_frequency": "", "podcast_format": ""})
+    persona = personalize(PERSONA, codes)
+    assert [t["feature"] for t in persona["traits"]] == ["age:35-60"]
+    assert persona["name"] == "Mid-career listeners"
+    assert "Long-form" not in persona["description"]
+
+
+def test_personalize_without_shared_traits_says_so():
+    codes = codes_from_prefs({"age": "60_plus", "podcast_duration": "short", "music_genre": [],
+                              "podcast_content": [], "podcast_frequency": "", "podcast_format": ""})
+    persona = personalize(PERSONA, codes)
+    assert persona["traits"] == []
+    assert persona["name"] == "Eclectic listener"
+
+
+@pytest.mark.parametrize("age", ["under_12", "12_19", "20_34", "35_59", "60_plus"])
+@pytest.mark.parametrize("duration", ["short", "medium", "long", "extra_long", "any"])
+def test_committed_personas_never_contradict_the_user(age, duration):
+    seg = Segmenter.load(settings.model_dir)
+    prefs = {"age": age, "podcast_duration": duration, "music_genre": ["pop"],
+             "podcast_content": ["comedy"], "podcast_frequency": "weekly", "podcast_format": "interview"}
+    codes = codes_from_prefs(prefs)
+    persona = personalize(seg.predict(encode(codes)), codes)
+    for trait in persona["traits"]:
+        field, code = trait["feature"].split(":")
+        assert code in codes[field], (age, duration, trait)

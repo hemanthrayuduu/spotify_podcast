@@ -13,7 +13,7 @@ from typing import Any, Dict
 
 import numpy as np
 
-from app.ml.features import FEATURE_NAMES
+from app.ml.features import FEATURE_NAMES, SegmentCodes
 
 logger = logging.getLogger(__name__)
 
@@ -75,3 +75,33 @@ class Segmenter:
 
     def predict(self, vector: np.ndarray) -> Dict[str, Any]:
         return self.personas[int(self.nearest(vector)[0])]
+
+
+def personalize(persona: Dict[str, Any], codes: SegmentCodes) -> Dict[str, Any]:
+    """Keep only the persona traits this user actually has.
+
+    The nearest segment can still differ from the user on its defining
+    traits (a 60+ listener landing in "Mid-career listeners"), and showing
+    those, or prompting the LLM with them, would contradict their answers.
+    """
+
+    def has(feature: str) -> bool:
+        field, code = feature.split(":", 1)
+        return code in codes.get(field, set())
+
+    shared = [t for t in persona["traits"] if has(t["feature"])]
+    if shared:
+        name = " · ".join(t["label"] for t in shared[:2])
+        description = (
+            f"You share the defining traits of a group that is {persona['share']:.0%} of surveyed "
+            "listeners: "
+            + ", ".join(f"{t['label'].lower()} ({t['lift']:.1f}× more common than average)" for t in shared)
+            + "."
+        )
+    else:
+        name = "Eclectic listener"
+        description = (
+            "Your answers don't line up with the defining traits of any one survey group, "
+            "so your recommendations lean on your answers alone."
+        )
+    return {**persona, "name": name, "description": description, "traits": shared}

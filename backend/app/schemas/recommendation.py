@@ -1,7 +1,7 @@
 """Request/response schemas for the recommendation endpoint."""
 
 import json
-from typing import Any, List
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -89,18 +89,61 @@ class Persona(BaseModel):
     share: float
 
 
+class MatchBreakdown(BaseModel):
+    """Each component is in [0, 1]; see app.services.ranking.WEIGHTS."""
+
+    topic: float
+    duration: float
+    endorsement: float
+    freshness: float
+
+
+class Match(BaseModel):
+    score: int = Field(..., ge=0, le=100)
+    breakdown: MatchBreakdown
+
+
 class Recommendation(BaseModel):
-    name: str
-    creator: str
-    description: str
-    format: str
-    duration: str
-    language: str
-    region: str
+    """A show verified in the Apple Podcasts catalog.
+
+    Every field comes from the catalog except ``summary`` and ``reason``,
+    which are AI-written when ``source == "ai"``.
+    """
+
+    id: int = Field(..., description="Apple Podcasts collection id")
+    title: str
+    publisher: str
+    artwork_url: Optional[str]
+    genres: List[str]
+    apple_url: str
+    spotify_url: str
+    feed_url: Optional[str]
+    episode_count: Optional[int]
+    typical_episode_minutes: Optional[int] = Field(..., description="Median of recent episodes")
+    last_episode_date: Optional[str]
+    explicit: bool
+    language: Optional[str] = Field(..., description="ISO 639-1 code declared by the RSS feed")
+    summary: Optional[str]
     reason: str
-    link: str
+    source: Literal["ai", "catalog"]
+    match: Match
+
+
+class RecommendMeta(BaseModel):
+    mode: Literal["ai", "catalog_only"]
+    llm_model: Optional[str]
+    storefront: str
+    llm_candidates: int = Field(..., description="Shows the LLM proposed")
+    candidates_considered: int
+    dropped_unverified: int = Field(..., description="LLM candidates not found in the catalog")
+    dropped_language: int = Field(..., description="Shows whose feed is in another language")
+    catalog_errors: int = Field(..., description="Catalog calls that failed; results may be partial")
+    segment_model_version: str
+    cached: bool
+    latency_ms: int
 
 
 class RecommendationResponse(BaseModel):
     persona: Persona
     recommendations: List[Recommendation]
+    meta: RecommendMeta

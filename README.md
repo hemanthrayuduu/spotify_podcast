@@ -93,6 +93,50 @@ The application is configured for deployment on:
 - Frontend: Netlify
 - Backend: Render — start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, health check path `/health`. Rate limiting keys on the client IP Render appends to `X-Forwarded-For` (`app/core/limiter.py`).
 
+## How recommendations work
+
+Every show the API returns exists in Apple's podcast catalog. Its artwork, links, genres,
+episode lengths, last-episode date and language come from the catalog and the show's own RSS
+feed, never from the LLM.
+
+1. **Persona.** The user's answers are mapped to a survey persona (see below), which is passed
+   to the LLM as context.
+2. **Suggest.** `openai/gpt-oss-120b` on Groq proposes 8 shows (title, host, one-line summary,
+   reason) through strict JSON-schema output.
+3. **Verify.** Each suggestion is searched in the iTunes catalog and fuzzy-matched on title and
+   host (`app/services/catalog.py`). The host check matters because copycat feeds reuse popular
+   titles. A suggestion with no confident match is dropped and counted in
+   `meta.dropped_unverified`.
+4. **Enrich.** Batched iTunes lookups supply the real median episode length and the
+   last-episode date. Each show's RSS feed is read for the language it declares.
+5. **Rank.** A transparent 0–100 score (`app/services/ranking.py`), returned with its breakdown.
+   - **Score:** topic match on Apple genres (35%), fit of the real episode length to the
+     requested band (30%), LLM endorsement (20%), freshness (15%).
+   - **Filters:** at most one show per publisher; shows the user already enjoys are excluded;
+     no explicit shows for under-20 age groups; no trailer-only feeds; no shows whose feed is
+     in a language other than the one requested.
+6. **Top up / fall back.** If fewer than 5 shows survive, or the LLM is unavailable, picks come
+   from Apple's top charts for the user's topics in their storefront (`meta.mode =
+   "catalog_only"`). Nothing is invented. If the catalog itself is unreachable, the API
+   returns 503.
+
+The iTunes API allows roughly 20 calls per minute per IP. Responses are cached (6 h for
+catalog data, 10 min per identical request), concurrency is capped, and lookups are batched.
+
+**Measuring it.** `python -m scripts.eval_recommendations` runs 12 diverse listener profiles
+against the live services. It reports how often the raw LLM suggestions are real shows, and
+how often the returned shows match the requested length, language and topic.
+
+Catalog-only mode (no `GROQ_API_KEY`), 2026-10-14:
+
+| Metric | Result |
+|---|---|
+| Topic match | 100% |
+| Feed language matches | 92% |
+| Distinct publishers | 5 of 5 |
+| Real episode length in the requested band | 62% |
+| Latency p50 | 1.0 s |
+
 ## Listener personas (survey model)
 
 `backend/train.py` trains a KMeans model on `data/Spotify_user_research.csv`:
