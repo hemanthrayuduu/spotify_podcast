@@ -84,6 +84,7 @@ async def test_ai_mode_returns_only_verified_shows(make_client):
     assert len({r["publisher"] for r in recs}) == 5  # one per publisher
     assert data["meta"]["mode"] == "ai"
     assert data["meta"]["llm_candidates"] == 7
+    assert data["meta"]["llm_verified"] == 6  # all but the imaginary show
     assert data["meta"]["dropped_unverified"] == 1  # the imaginary show
 
 

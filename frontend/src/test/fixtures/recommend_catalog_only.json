@@ -176,6 +176,7 @@
     "llm_model": null,
     "storefront": "gb",
     "llm_candidates": 0,
+    "llm_verified": 0,
     "candidates_considered": 24,
     "dropped_unverified": 0,
     "dropped_language": 0,

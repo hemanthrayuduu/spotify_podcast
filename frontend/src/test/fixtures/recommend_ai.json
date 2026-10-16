@@ -176,6 +176,7 @@
     "llm_model": "openai/gpt-oss-120b",
     "storefront": "gb",
     "llm_candidates": 8,
+    "llm_verified": 7,
     "candidates_considered": 24,
     "dropped_unverified": 1,
     "dropped_language": 0,

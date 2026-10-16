@@ -288,6 +288,7 @@ class _Run:
                 "llm_model": self.rec.model if suggestions else None,
                 "storefront": self.country,
                 "llm_candidates": len(suggestions),
+                "llm_verified": sum(1 for c in candidates if c.llm_rank is not None),
                 "candidates_considered": len({c.show.id for c in candidates}),
                 "dropped_unverified": dropped,
                 "dropped_language": self.dropped_language,
