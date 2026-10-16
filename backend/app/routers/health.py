@@ -17,4 +17,5 @@ async def health(request: Request):
     return {
         "status": "ok" if models_loaded else "degraded",
         "models_loaded": models_loaded,
+        "llm": getattr(request.app.state, "llm_status", None),
     }

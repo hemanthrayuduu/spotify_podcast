@@ -25,7 +25,7 @@ const About = () => {
           <li><span>Frontend</span> React, React Router</li>
           <li><span>Backend</span> FastAPI (Python)</li>
           <li><span>ML</span> scikit-learn KMeans segmentation</li>
-          <li><span>AI</span> Llama (open-source, via Groq) for recommendation generation</li>
+          <li><span>AI</span> gpt-oss (open-weight, via Groq) for recommendation generation</li>
         </ul>
       </section>
 

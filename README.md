@@ -4,13 +4,13 @@ A personalized podcast recommendation system powered by machine learning and AI.
 
 ## Overview
 
-Spotify Podcast Recommender analyzes user preferences and listening habits to provide tailored podcast recommendations. The application uses segmentation algorithms and an open-source LLM (Llama, via Groq) to generate highly personalized content suggestions.
+Spotify Podcast Recommender analyzes user preferences and listening habits to provide tailored podcast recommendations. The application uses segmentation algorithms and an open-weight LLM (gpt-oss, via Groq) to generate highly personalized content suggestions.
 
 ## Features
 
 - **Personalized Recommendations**: Uses machine learning to match podcasts to user preferences
 - **User Segmentation**: Identifies listening profiles to better understand user interests
-- **AI-Enhanced Suggestions**: Leverages an open-source LLM (Llama, via Groq) to generate contextually relevant recommendations
+- **AI-Enhanced Suggestions**: Leverages an open-weight LLM (gpt-oss, via Groq) to generate contextually relevant recommendations
 - **Library Management**: Save favorite podcasts for future reference
 - **Modern UI**: Responsive design with Spotify-inspired aesthetics
 
@@ -24,7 +24,7 @@ Spotify Podcast Recommender analyzes user preferences and listening habits to pr
 ### Backend
 - FastAPI (Python) for efficient API endpoints
 - KMeans clustering for user segmentation
-- Open-source LLM (Llama via Groq) integration for recommendation intelligence
+- Open-weight LLM (gpt-oss via Groq) integration for recommendation intelligence
 - Scikit-learn for preprocessing and model training
 
 ## Installation
@@ -71,7 +71,7 @@ npm start
 The backend reads configuration from environment variables (see `.env.example`):
 
 - `GROQ_API_KEY` — enables LLM recommendations; falls back to a static list if unset.
-- `GROQ_MODEL` — Groq model (default `llama-3.3-70b-versatile`).
+- `GROQ_MODEL` — Groq model (default `openai/gpt-oss-120b`). The model is checked at startup; `GET /health` reports `llm.ok` and the error if it is unavailable.
 - `ALLOWED_ORIGINS` — comma-separated CORS origins; set to your frontend URL in production.
 
 ## Docker
@@ -88,7 +88,7 @@ The image runs as a non-root user and serves on `$PORT` (default 8000).
 
 The application is configured for deployment on:
 - Frontend: Netlify
-- Backend: Render — start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, health check path `/health`.
+- Backend: Render — start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, health check path `/health`. Rate limiting keys on the client IP Render appends to `X-Forwarded-For` (`app/core/limiter.py`).
 
 ## Security note: model artifacts
 

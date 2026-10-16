@@ -1,8 +1,8 @@
 """Groq-backed podcast recommendation generation.
 
 Single source of truth for turning a user's preferences + their KMeans
-segment profile into 5 podcast recommendations. Uses Groq (an open-source
-Llama model) in JSON mode so the model returns a structured payload instead
+segment profile into 5 podcast recommendations. Uses Groq (an open-weight
+gpt-oss model) in JSON mode so the model returns a structured payload instead
 of free-text we have to scrape.
 """
 
@@ -31,6 +31,31 @@ _REQUIRED_FIELDS = (
     "region",
     "reason",
 )
+
+
+# gpt-oss models reason before answering; reasoning tokens share the completion
+# budget, so a small max_tokens can cut the JSON off mid-object.
+_MAX_COMPLETION_TOKENS = 4096
+
+
+def _is_reasoning_model(model: str) -> bool:
+    return model.startswith("openai/gpt-oss")
+
+
+async def check_model(client: Optional[AsyncGroq], model: str) -> Dict[str, Any]:
+    """Report whether the configured Groq model is reachable.
+
+    Run at startup so a retired or mistyped model shows up in /health instead
+    of every request silently degrading to the static fallback.
+    """
+    if client is None:
+        return {"configured": False, "model": model, "ok": False, "error": "GROQ_API_KEY not set"}
+    try:
+        await client.models.retrieve(model)
+    except Exception as exc:  # noqa: BLE001 - any failure means the model is unusable
+        logger.error(f"Groq model {model!r} unavailable: {exc}")
+        return {"configured": True, "model": model, "ok": False, "error": str(exc)}
+    return {"configured": True, "model": model, "ok": True, "error": None}
 
 
 def _build_prompt(user_prefs: Dict[str, Any], segment_profile: Dict[str, Any]) -> str:
@@ -119,6 +144,9 @@ async def generate_podcast_recommendations(
         return get_fallback_recommendations(user_preferences)
 
     try:
+        extra: Dict[str, Any] = {}
+        if _is_reasoning_model(model):
+            extra = {"reasoning_effort": "low", "include_reasoning": False}
         response = await client.chat.completions.create(
             model=model,
             messages=[
@@ -126,8 +154,9 @@ async def generate_podcast_recommendations(
                 {"role": "user", "content": _build_prompt(user_preferences, segment_profile)},
             ],
             response_format={"type": "json_object"},
-            max_tokens=1500,
+            max_completion_tokens=_MAX_COMPLETION_TOKENS,
             temperature=0.7,
+            **extra,
         )
         content = response.choices[0].message.content
         recommendations = (json.loads(content) or {}).get("recommendations", [])
@@ -135,7 +164,7 @@ async def generate_podcast_recommendations(
             raise ValueError("no recommendations in model response")
         return _normalize(recommendations, user_preferences)
     except Exception as exc:  # noqa: BLE001 - any failure degrades to the static fallback
-        logger.error(f"Groq recommendation error: {exc}")
+        logger.error(f"Groq recommendation error (model={model}), using fallback: {exc}")
         return get_fallback_recommendations(user_preferences)
 
 
