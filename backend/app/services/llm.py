@@ -86,11 +86,17 @@ async def check_model(client: Optional[AsyncGroq], model: str) -> Dict[str, Any]
     """
     if client is None:
         return {"configured": False, "model": model, "ok": False, "error": "GROQ_API_KEY not set"}
+    # List rather than models.retrieve(): groq>=1.x percent-encodes the id into
+    # the URL path ("openai%2Fgpt-oss-120b"), which the API answers with a 404.
     try:
-        await client.models.retrieve(model)
+        available = {m.id for m in (await client.models.list()).data}
     except Exception as exc:  # noqa: BLE001 - any failure means the model is unusable
-        logger.error(f"Groq model {model!r} unavailable: {exc}")
+        logger.error(f"Groq model list unavailable: {exc}")
         return {"configured": True, "model": model, "ok": False, "error": str(exc)}
+    if model not in available:
+        error = f"model {model!r} is not available to this API key"
+        logger.error(f"Groq {error}")
+        return {"configured": True, "model": model, "ok": False, "error": error}
     return {"configured": True, "model": model, "ok": True, "error": None}
 
 

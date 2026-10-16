@@ -30,20 +30,28 @@ class _Completions:
 
 
 class _Models:
-    def __init__(self, error=None):
-        self._error = error
+    """Mirrors the real API: ids contain slashes (openai/gpt-oss-120b)."""
 
-    async def retrieve(self, model):
+    def __init__(self, error=None, available=("openai/gpt-oss-120b", "openai/gpt-oss-20b")):
+        self._error = error
+        self._available = available
+
+    async def list(self):
         if self._error:
             raise self._error
-        return {"id": model}
+        return type("ModelList", (), {"data": [type("Model", (), {"id": m})() for m in self._available]})()
+
+    async def retrieve(self, model):
+        # groq>=1.x percent-encodes the id into the URL path, so the real API
+        # 404s on "openai%2Fgpt-oss-120b"; mimic that.
+        raise RuntimeError(f"model_not_found: {model.replace('/', '%2F')}")
 
 
 class FakeGroq:
     """Each chat call returns the next scripted output (the last one repeats)."""
 
-    def __init__(self, outputs, models_error=None):
-        self.models = _Models(models_error)
+    def __init__(self, outputs, models_error=None, available=("openai/gpt-oss-120b", "openai/gpt-oss-20b")):
+        self.models = _Models(models_error, available)
         self.chat = type("Chat", (), {})()
         self.chat.completions = _Completions(outputs)
 
