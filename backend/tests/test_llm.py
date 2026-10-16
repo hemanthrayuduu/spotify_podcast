@@ -54,6 +54,12 @@ async def test_check_model_reports_unavailable_model():
     assert "model_not_found" in status["error"]
 
 
+async def test_check_model_reports_a_model_the_account_cannot_use():
+    status = await check_model(FakeGroq([VALID], available=("openai/gpt-oss-20b",)), "openai/gpt-oss-120b")
+    assert status["ok"] is False
+    assert "openai/gpt-oss-120b" in status["error"]
+
+
 async def test_check_model_without_client():
     status = await check_model(None, "openai/gpt-oss-120b")
     assert status["configured"] is False and status["ok"] is False
