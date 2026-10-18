@@ -208,24 +208,28 @@ class ITunesCatalog:
         return _shows((await self._get("/search", params)).get("results"))
 
     async def lookup(
-        self, ids: Sequence[int], country: str, per_show: int = 5
+        self, ids: Sequence[int], country: str, per_show: int = 5, chunk: int = _LOOKUP_CHUNK
     ) -> Tuple[Dict[int, Show], Dict[int, EpisodeStats]]:
-        """Shows plus typical episode length / last-episode date, in batched calls."""
+        """Shows plus typical episode length / last-episode date, in batched calls.
+
+        Bigger ``chunk``s spend fewer calls from the ~20/min budget but each
+        call is slower; fewer ``per_show`` episodes keep big batches fast.
+        """
         ids = list(dict.fromkeys(ids))
-        chunks = [ids[i : i + _LOOKUP_CHUNK] for i in range(0, len(ids), _LOOKUP_CHUNK)]
+        chunks = [ids[i : i + chunk] for i in range(0, len(ids), chunk)]
         bodies = await asyncio.gather(
             *(
                 self._get(
                     "/lookup",
                     {
-                        "id": ",".join(str(i) for i in chunk),
+                        "id": ",".join(str(i) for i in batch),
                         "entity": "podcastEpisode",
                         "limit": per_show,
                         "country": country,
                         "lang": "en_us",
                     },
                 )
-                for chunk in chunks
+                for batch in chunks
             )
         )
         results = [r for body in bodies for r in (body.get("results") or []) if isinstance(r, dict)]

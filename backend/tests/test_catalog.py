@@ -84,6 +84,13 @@ async def test_lookup_batches_ids_in_chunks():
     assert stats[2].typical_minutes == 10
 
 
+async def test_lookup_batch_size_is_configurable():
+    shows = [show(i, f"Show {i}", f"P{i}") for i in range(1, 13)]
+    fake = FakeITunes(shows)
+    await ITunesCatalog(fake.client()).lookup(list(range(1, 13)), country="us", chunk=10)
+    assert fake.paths() == ["/lookup", "/lookup"]  # 12 ids in batches of 10
+
+
 async def test_requests_ask_for_english_genre_names():
     fake = FakeITunes([show(1, "Comedy Bang Bang", "Earwolf")])
     catalog = ITunesCatalog(fake.client())

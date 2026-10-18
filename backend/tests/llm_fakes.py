@@ -60,14 +60,15 @@ class FakeGroq:
         return self.chat.completions.calls
 
 
-def suggestions_json(*pairs):
-    """[(title, host), ...] → the JSON the model returns."""
+def choice_json(picks=(), extras=()):
+    """picks: [(id, reason)], extras: [(title, host)] → the JSON the curator returns."""
     return json.dumps(
         {
-            "candidates": [
+            "picks": [{"id": i, "summary": f"Show {i} summary.", "reason": r} for i, r in picks],
+            "extras": [
                 {"title": t, "host": h, "summary": f"{t} summary.", "reason": f"Why {t}."}
-                for t, h in pairs
-            ]
+                for t, h in extras
+            ],
         }
     )
 
