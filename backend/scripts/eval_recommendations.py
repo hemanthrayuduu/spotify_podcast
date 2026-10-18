@@ -6,11 +6,14 @@ Run from backend/ (uses GROQ_API_KEY from backend/.env if set):
 
 For a set of diverse listener profiles it reports, per profile and overall:
 
-  * LLM verified   share of the LLM's proposed shows found in Apple's catalog
-                   — how often the raw LLM output is real. The API only ever
-                   returns verified shows; this measures what the previous
-                   LLM-only design would have shown users. (Shows whose
+  * LLM verified   share of the LLM's proposals that are real shows. Picks from
+                   the chart list are real by construction; extras (its own
+                   suggestions) are verified in Apple's catalog. (Extras whose
                    search failed count as unverified; see catalog errors.)
+  * pool / extras  chart shows the LLM chose from, and how many of its own
+                   suggestions it added and got verified
+  * ai_top5        share of the returned shows the AI picked (vs. chart order)
+                   — whether the AI step actually shapes the results
   * in length band share of recommendations whose real median episode
                    length falls inside the requested band
   * language ok    share whose feed-declared language matches (unknown feeds
@@ -77,6 +80,10 @@ PROFILES: Dict[str, Dict[str, Any]] = {
                         podcast_duration="long", podcasts_enjoyed="Pardon My Take"),
     "French culture": _p(podcast_content=["arts_culture", "history"], content_language="french",
                          region="europe", podcast_duration="long"),
+    "English, South America": _p(podcast_content=["sports", "news_politics"], region="south_america",
+                                 podcast_duration="medium"),
+    "Telugu movies": _p(podcast_content=["tv_film", "comedy"], content_language="telugu",
+                        region="asia", podcast_duration="any", podcast_format="conversational"),
 }
 
 
@@ -94,10 +101,14 @@ def _metrics(prefs: Dict[str, Any], response: Dict[str, Any], seconds: float) ->
         for r in recs
     ]
     proposed = meta["llm_candidates"]
+    picks = proposed - meta["llm_extras"]
     return {
         "mode": meta["mode"],
         "recs": len(recs),
+        "pool": meta["pool_size"],
+        "extras": f"{meta['llm_verified'] - picks}/{meta['llm_extras']}",
         "llm_verified": meta["llm_verified"] / proposed if proposed else None,
+        "ai_top5": _share([r["source"] == "ai" for r in recs]) if meta["mode"] == "ai" else None,
         "in_band": _share(in_band),
         "language_ok": _share([r["language"] == want_lang for r in recs]),
         "topic_match": _share([r["match"]["breakdown"]["topic"] == 1.0 for r in recs]),
@@ -137,8 +148,8 @@ async def main() -> None:
             print(f"- {name}: {titles}", flush=True)
 
     cols = [
-        "mode", "recs", "llm_verified", "in_band", "language_ok", "topic_match", "publishers",
-        "catalog_errors", "seconds",
+        "mode", "recs", "pool", "extras", "llm_verified", "ai_top5", "in_band", "language_ok",
+        "topic_match", "publishers", "catalog_errors", "seconds",
     ]
     print("\n| profile | " + " | ".join(cols) + " |")
     print("|---|" + "---|" * len(cols))
@@ -146,10 +157,11 @@ async def main() -> None:
         print(f"| {name} | " + " | ".join(_fmt(m[c], c) for c in cols) + " |")
 
     def mean(col: str) -> Any:
-        values = [m[col] for _, m in rows if m[col] is not None]
+        values = [m[col] for _, m in rows if isinstance(m[col], (int, float))]
         return statistics.mean(values) if values else None
 
-    print("| **mean** | | | " + " | ".join(_fmt(mean(c), c) for c in cols[2:]) + " |")
+    numeric = cols[4:]  # skip mode, recs, pool, extras
+    print("| **mean** | | | | | " + " | ".join(_fmt(mean(c), c) for c in numeric) + " |")
     latencies = sorted(m["seconds"] for _, m in rows)
     print(f"\nlatency p50 {statistics.median(latencies):.1f}s, max {latencies[-1]:.1f}s")
 

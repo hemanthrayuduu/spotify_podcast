@@ -3,12 +3,13 @@
     persona   ← survey segment for the user's answers
     seeds     ← podcasts they already enjoy, resolved in the catalog (excluded,
                 and their genres count toward topic fit)
-    suggest   ← LLM candidates (title + host + why)
-    verify    ← each candidate resolved to a real Apple Podcasts show; the rest dropped
-    enrich    ← one batched lookup: real episode lengths + last-episode dates
-    rank      ← transparent score; one show per publisher
-    top up    ← Apple's genre charts for the user's topics if fewer than top_n
-                survive (or there is no LLM)
+    pool      ← Apple's genre charts for the user's topics, with real episode
+                lengths; ineligible shows filtered out, best fits kept
+    choose    ← the LLM picks from the pool by id and may add up to 2 shows of
+                its own (extras)
+    verify    ← each extra resolved to a real Apple Podcasts show; the rest dropped
+    rank      ← transparent score over pool + extras, language check, one show
+                per publisher; without an LLM the pool is ranked directly
 
 Nothing the user sees about a show comes from the LLM except the clearly
 labelled AI-written ``reason`` and ``summary``.
@@ -35,7 +36,14 @@ from app.services.catalog import (
     match_enjoyed,
     same_title,
 )
-from app.services.llm import LLMError, Suggestion, suggest_podcasts
+from app.services.llm import (
+    DEFAULT_EXTRAS,
+    Choice,
+    LLMError,
+    PoolEntry,
+    Suggestion,
+    choose_podcasts,
+)
 from app.services.ranking import Candidate, Ranked, rank
 
 logger = logging.getLogger(__name__)
@@ -44,8 +52,14 @@ MINOR_AGES = {"under_12", "12_19"}
 _MAX_SEEDS = 3
 _SEARCH_LIMIT = 8  # same limit for seed and verify searches so they share cache entries
 _MAX_CHART_TOPICS = 3
-_CHART_DEPTH = 12  # top shows taken from each genre chart
-_MAX_LOOKUP_IDS = 24
+_CHART_DEPTH = 15  # top shows taken from each genre chart
+_POOL_SIZE = 30  # candidates shown to the LLM (~1k prompt tokens)
+# Each chart is looked up on its own (15 ids → 8 + 7) so the cached batches are
+# reused whatever the topic order or combination.
+_POOL_LOOKUP_CHUNK = 8
+_POOL_EPISODES = 3  # recent episodes per show: enough for a median length
+_MAX_LOOKUP_IDS = _CHART_DEPTH * _MAX_CHART_TOPICS
+_THIN_POOL = 3  # pool shorter than top_n + this → the AI may add more of its own
 _LANGUAGE_BATCH = 12  # feeds checked per parallel batch
 _MAX_CACHE_ENTRIES = 256
 
@@ -59,7 +73,8 @@ class Recommender:
         model: str,
         *,
         top_n: int = 5,
-        n_suggestions: int = 8,
+        n_picks: int = 8,
+        n_extras: int = DEFAULT_EXTRAS,
         cache_ttl: float = 600,
         today: Callable[[], date] = date.today,
     ):
@@ -68,7 +83,8 @@ class Recommender:
         self.llm_client = llm_client
         self.model = model
         self.top_n = top_n
-        self.n_suggestions = n_suggestions
+        self.n_picks = n_picks
+        self.n_extras = n_extras
         self.cache_ttl = cache_ttl
         self.today = today
         self._cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
@@ -112,7 +128,7 @@ class _Run:
         self.band = option("podcast_duration", prefs["podcast_duration"]).minutes
         self.language = language.iso_language
         self.feed_languages: Dict[int, Optional[str]] = {}
-        self.dropped_language = 0
+        self.language_rejected: set = set()
         self.catalog_ok = 0
         self.catalog_failed = 0
         self.llm_failed = False
@@ -136,22 +152,40 @@ class _Run:
         results = await asyncio.gather(*(self._search(n, _SEARCH_LIMIT) for n in names))
         return [m for n, shows in zip(names, results) if shows and (m := match_enjoyed(n, shows))]
 
-    async def _suggestions(self) -> List[Suggestion]:
+    async def _choose(self, pool: List[Candidate], n_extras: int) -> Optional[Choice]:
         if self.rec.llm_client is None:
-            return []
+            return None
+        today = self.rec.today()
+        entries = [
+            PoolEntry(
+                id=c.show.id,
+                title=c.show.title,
+                publisher=c.show.publisher,
+                genres=c.show.genres,
+                minutes=c.stats.typical_minutes if c.stats else None,
+                days_since_last=(today - c.stats.last_episode_date).days
+                if c.stats and c.stats.last_episode_date
+                else None,
+            )
+            for c in pool
+        ]
         try:
-            return await suggest_podcasts(
-                self.rec.llm_client, self.labels, self.persona, self.rec.model, self.rec.n_suggestions
+            return await choose_podcasts(
+                self.rec.llm_client, self.labels, self.persona, entries, self.rec.model,
+                n_picks=self.rec.n_picks, n_extras=n_extras,
             )
         except LLMError as exc:
             logger.warning(f"LLM unavailable, using catalog only: {exc}")
             self.llm_failed = True
-            return []
+            return None
 
-    async def _verify(self, suggestions: Sequence[Suggestion]) -> Tuple[List[Candidate], int]:
+    async def _verify(
+        self, suggestions: Sequence[Suggestion], first_rank: int = 0
+    ) -> Tuple[List[Candidate], int]:
+        """Resolve the LLM's own suggestions to real shows; count the ones that aren't."""
         results = await asyncio.gather(*(self._search(s.title, _SEARCH_LIMIT) for s in suggestions))
         verified, dropped = [], 0
-        for i, (s, shows) in enumerate(zip(suggestions, results)):
+        for i, (s, shows) in enumerate(zip(suggestions, results), start=first_rank):
             if shows is None:  # the search failed; that's a catalog error, not a fake show
                 continue
             match = best_match(s.title, s.host, shows)
@@ -173,15 +207,21 @@ class _Run:
         self.catalog_ok += 1
         return ids[:_CHART_DEPTH]
 
-    async def _lookup(self, ids: List[int]) -> Tuple[Dict[int, Show], Dict[int, Any]]:
+    async def _lookup(self, ids: List[int], **kw: Any) -> Tuple[Dict[int, Show], Dict[int, Any]]:
         if not ids:
             return {}, {}
+        errors: List[CatalogError] = []
         try:
-            result = await self.rec.catalog.lookup(ids[:_MAX_LOOKUP_IDS], self.country)
+            result = await self.rec.catalog.lookup(
+                ids[:_MAX_LOOKUP_IDS], self.country, errors=errors, **kw
+            )
         except CatalogError as exc:
             logger.warning(f"Lookup failed: {exc}")
             self.catalog_failed += 1
             return {}, {}
+        for exc in errors:  # some batches failed; the rest still count
+            logger.warning(f"Lookup batch failed: {exc}")
+        self.catalog_failed += len(errors)
         self.catalog_ok += 1
         return result
 
@@ -189,13 +229,18 @@ class _Run:
         """Chart ids per topic (cached for hours)."""
         return list(await asyncio.gather(*(self._chart(t) for t in self.topics[:_MAX_CHART_TOPICS])))
 
-    async def _chart_candidates(
-        self, charts: List[List[int]], known: Dict[int, Candidate]
-    ) -> List[Candidate]:
-        """Top shows from the Apple genre chart of each chosen topic."""
+    async def _chart_candidates(self) -> List[Candidate]:
+        """Top shows from the Apple genre chart of each chosen topic, with real stats."""
         topics = self.topics[:_MAX_CHART_TOPICS]
-        new_ids = [i for ids in charts for i in ids if i not in known]
-        shows, stats = await self._lookup(list(dict.fromkeys(new_ids)))
+        charts = await self._charts()
+        looked_up = await asyncio.gather(
+            *(self._lookup(chart, per_show=_POOL_EPISODES, chunk=_POOL_LOOKUP_CHUNK) for chart in charts)
+        )
+        shows: Dict[int, Show] = {}
+        stats: Dict[int, Any] = {}
+        for found, found_stats in looked_up:
+            shows.update(found)
+            stats.update(found_stats)
         candidates = []
         for topic, ids in zip(topics, charts):
             for position, show_id in enumerate(ids):
@@ -211,7 +256,7 @@ class _Run:
         return candidates
 
     async def _enrich(self, candidates: List[Candidate]) -> None:
-        """Attach real episode stats to verified LLM picks (one batched lookup)."""
+        """Attach real episode stats to shows that lack them (the LLM's verified extras)."""
         _, stats = await self._lookup([c.show.id for c in candidates if c.stats is None])
         for c in candidates:
             c.stats = c.stats or stats.get(c.show.id)
@@ -225,26 +270,28 @@ class _Run:
     async def _in_language(self, candidates: List[Candidate], seeds: List[Show]) -> List[Ranked]:
         """Best ``top_n`` shows whose feed is in the requested language.
 
-        Feeds are checked in parallel batches, best-ranked first. Feeds that
-        don't declare a language are kept: we can't verify them, and dropping
-        them would punish older feeds rather than wrong ones.
+        Feeds are checked in parallel batches, best-ranked first. Shows whose
+        feed confirms the language come first; feeds that don't declare one
+        are kept but only fill remaining slots: we can't prove them wrong, and
+        dropping them would punish older feeds rather than wrong ones.
         """
         ordered = self._rank(candidates, seeds, top_n=None)
-        kept: List[Ranked] = []
-        rejected = set()
+        confirmed: List[Ranked] = []
+        undeclared: List[Ranked] = []
         for start in range(0, len(ordered), _LANGUAGE_BATCH):
             batch = ordered[start : start + _LANGUAGE_BATCH]
             await self._languages([r.candidate.show for r in batch])
             for r in batch:
                 lang = self.feed_languages.get(r.candidate.show.id)
-                if lang is not None and lang != self.language:
-                    rejected.add(r.candidate.show.id)
-                elif len(kept) < self.rec.top_n:
-                    kept.append(r)
-            if len(kept) == self.rec.top_n:
+                if lang is None:
+                    undeclared.append(r)
+                elif lang == self.language:
+                    confirmed.append(r)
+                else:
+                    self.language_rejected.add(r.candidate.show.id)
+            if len(confirmed) >= self.rec.top_n:
                 break
-        self.dropped_language = len(rejected)
-        return kept
+        return (confirmed + undeclared)[: self.rec.top_n]
 
     def _rank(
         self, candidates: List[Candidate], seeds: List[Show], top_n: Optional[int]
@@ -264,18 +311,51 @@ class _Run:
             top_n=top_n,
         )
 
-    async def execute(self) -> Dict[str, Any]:
-        seeds, suggestions = await asyncio.gather(self._seeds(), self._suggestions())
-        candidates, dropped = await self._verify(suggestions)
-        # Episode stats come from Apple, languages from publishers' feeds: overlap them.
-        await asyncio.gather(self._enrich(candidates), self._languages([c.show for c in candidates]))
-        ranked = await self._in_language(candidates, seeds)
+    async def _pool(self, charted: List[Candidate], seeds: List[Show]) -> List[Candidate]:
+        """The chart shows worth showing the LLM: eligible, in the user's language,
+        one per publisher, best first."""
+        # Storefront charts can be mostly in another language (an English
+        # listener's region store, Telugu in the Indian store), so check feeds
+        # first. Feed reads don't touch the iTunes budget and are cached.
+        await self._languages([c.show for c in charted])
+        in_language = []
+        for c in charted:
+            lang = self.feed_languages.get(c.show.id)
+            if lang is not None and lang != self.language:
+                self.language_rejected.add(c.show.id)
+            else:
+                in_language.append(c)
+        ordered = self._rank(in_language, seeds, top_n=None)
+        return [r.candidate for r in ordered][:_POOL_SIZE]
 
-        if len(ranked) < self.rec.top_n:
-            # Charts only when needed: each one is an iTunes call from a ~20/min budget.
-            charts = await self._charts()
-            candidates += await self._chart_candidates(charts, {c.show.id: c for c in candidates})
-            ranked = await self._in_language(candidates, seeds)
+    def _extras_allowed(self, pool: List[Candidate]) -> int:
+        """Up to n_extras; more when the list is thin, unless the catalog is failing
+        (each extra is another iTunes search)."""
+        if self.catalog_failed or len(pool) >= self.rec.top_n + _THIN_POOL:
+            return self.rec.n_extras
+        return max(self.rec.n_extras, self.rec.n_picks - len(pool))
+
+    async def execute(self) -> Dict[str, Any]:
+        seeds, charted = await asyncio.gather(self._seeds(), self._chart_candidates())
+        pool = await self._pool(charted, seeds)
+        choice = await self._choose(pool, self._extras_allowed(pool))
+
+        candidates: List[Candidate] = list(pool)
+        dropped = 0
+        if choice:
+            by_id = {c.show.id: c for c in pool}
+            for i, pick in enumerate(choice.picks):
+                picked = by_id[pick.id]
+                picked.llm_rank, picked.reason, picked.summary = i, pick.reason, pick.summary
+            extras, dropped = await self._verify(choice.extras, first_rank=len(choice.picks))
+            candidates += extras
+        # Extras still need episode stats (Apple) and every show its language
+        # (publishers' feeds): overlap them.
+        await asyncio.gather(
+            self._enrich([c for c in candidates if c.stats is None]),
+            self._languages([c.show for c in candidates if c.llm_rank is not None]),
+        )
+        ranked = await self._in_language(candidates, seeds)
 
         if not ranked and self.catalog_failed and not self.catalog_ok:
             raise CatalogError("every catalog request failed")
@@ -284,14 +364,16 @@ class _Run:
             "persona": self.persona,
             "recommendations": [self._format(r, self.feed_languages) for r in ranked],
             "meta": {
-                "mode": "ai" if suggestions else "catalog_only",
-                "llm_model": self.rec.model if suggestions else None,
+                "mode": "ai" if choice else "catalog_only",
+                "llm_model": self.rec.model if choice else None,
                 "storefront": self.country,
-                "llm_candidates": len(suggestions),
+                "pool_size": len(pool),
+                "llm_candidates": len(choice.picks) + len(choice.extras) if choice else 0,
+                "llm_extras": len(choice.extras) if choice else 0,
                 "llm_verified": sum(1 for c in candidates if c.llm_rank is not None),
                 "candidates_considered": len({c.show.id for c in candidates}),
                 "dropped_unverified": dropped,
-                "dropped_language": self.dropped_language,
+                "dropped_language": len(self.language_rejected),
                 "catalog_errors": self.catalog_failed,
                 "segment_model_version": self.rec.segmenter.model_version,
                 "cached": False,

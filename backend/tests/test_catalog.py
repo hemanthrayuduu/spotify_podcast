@@ -84,6 +84,32 @@ async def test_lookup_batches_ids_in_chunks():
     assert stats[2].typical_minutes == 10
 
 
+async def test_lookup_batch_size_is_configurable():
+    shows = [show(i, f"Show {i}", f"P{i}") for i in range(1, 13)]
+    fake = FakeITunes(shows)
+    await ITunesCatalog(fake.client()).lookup(list(range(1, 13)), country="us", chunk=10)
+    assert fake.paths() == ["/lookup", "/lookup"]  # 12 ids in batches of 10
+
+
+async def test_lookup_keeps_batches_that_succeed():
+    shows = [show(i, f"Show {i}", f"P{i}") for i in range(1, 13)]
+    fake = FakeITunes(shows)
+    fake.fail_lookup_ids = {11}
+    errors = []
+    found, _ = await ITunesCatalog(fake.client(), retry_delay=0).lookup(
+        list(range(1, 13)), country="us", chunk=10, errors=errors
+    )
+    assert set(found) == set(range(1, 11))  # the failed batch (11, 12) is just missing
+    assert len(errors) == 1
+
+
+async def test_lookup_raises_when_every_batch_fails():
+    fake = FakeITunes([show(1, "Show 1", "P1")])
+    fake.fail_lookup_ids = {1}
+    with pytest.raises(CatalogError):
+        await ITunesCatalog(fake.client(), retry_delay=0).lookup([1], country="us")
+
+
 async def test_requests_ask_for_english_genre_names():
     fake = FakeITunes([show(1, "Comedy Bang Bang", "Earwolf")])
     catalog = ITunesCatalog(fake.client())

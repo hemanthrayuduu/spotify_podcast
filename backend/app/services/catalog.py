@@ -208,26 +208,51 @@ class ITunesCatalog:
         return _shows((await self._get("/search", params)).get("results"))
 
     async def lookup(
-        self, ids: Sequence[int], country: str, per_show: int = 5
+        self,
+        ids: Sequence[int],
+        country: str,
+        per_show: int = 5,
+        chunk: int = _LOOKUP_CHUNK,
+        errors: Optional[List[CatalogError]] = None,
     ) -> Tuple[Dict[int, Show], Dict[int, EpisodeStats]]:
-        """Shows plus typical episode length / last-episode date, in batched calls."""
+        """Shows plus typical episode length / last-episode date, in batched calls.
+
+        Bigger ``chunk``s spend fewer calls from the ~20/min budget but each
+        call is slower; fewer ``per_show`` episodes keep big batches fast.
+        A failed batch only loses its own shows (recorded in ``errors``); if
+        every batch fails, CatalogError is raised.
+        """
         ids = list(dict.fromkeys(ids))
-        chunks = [ids[i : i + _LOOKUP_CHUNK] for i in range(0, len(ids), _LOOKUP_CHUNK)]
-        bodies = await asyncio.gather(
+        chunks = [ids[i : i + chunk] for i in range(0, len(ids), chunk)]
+        outcomes = await asyncio.gather(
             *(
                 self._get(
                     "/lookup",
                     {
-                        "id": ",".join(str(i) for i in chunk),
+                        "id": ",".join(str(i) for i in batch),
                         "entity": "podcastEpisode",
                         "limit": per_show,
                         "country": country,
                         "lang": "en_us",
                     },
                 )
-                for chunk in chunks
-            )
+                for batch in chunks
+            ),
+            return_exceptions=True,
         )
+        bodies = []
+        failures: List[CatalogError] = []
+        for outcome in outcomes:
+            if isinstance(outcome, CatalogError):
+                failures.append(outcome)
+            elif isinstance(outcome, BaseException):
+                raise outcome
+            else:
+                bodies.append(outcome)
+        if failures and not bodies:
+            raise failures[0]
+        if errors is not None:
+            errors.extend(failures)
         results = [r for body in bodies for r in (body.get("results") or []) if isinstance(r, dict)]
         shows = {show.id: show for show in _shows(results)}
         minutes: Dict[int, List[float]] = {}

@@ -52,7 +52,7 @@ class FakeITunes:
         shows: List[dict],
         episodes: Optional[Dict[int, List[dict]]] = None,
         charts: Optional[Dict[int, List[int]]] = None,  # genre id → collection ids
-        languages: Optional[Dict[int, str]] = None,  # collection id → feed <language>
+        languages: Optional[Dict[int, Optional[str]]] = None,  # id → feed <language> (None: none)
     ):
         self.shows = shows
         self.episodes = episodes or {}
@@ -63,6 +63,7 @@ class FakeITunes:
         self.fail_terms: set = set()  # /search terms that get a 403 (rate limited)
         self.fail_first: Dict[str, int] = {}  # /search term → number of initial 403s
         self.chart_body: Optional[str] = None  # raw body for chart requests
+        self.fail_lookup_ids: set = set()  # /lookup batches containing these ids get a 403
 
     def _params(self, request: httpx.Request) -> Dict[str, str]:
         return {k: v[0] for k, v in parse_qs(request.url.query.decode()).items()}
@@ -80,9 +81,8 @@ class FakeITunes:
         if request.url.host == "feeds.example.com":
             show_id = int(request.url.path.strip("/").split(".")[0])
             language = self.languages.get(show_id, "en-us")
-            return httpx.Response(
-                200, text=f"<?xml version='1.0'?><rss><channel><title>t</title><language>{language}</language>"
-            )
+            tag = f"<language>{language}</language>" if language else ""  # None: undeclared
+            return httpx.Response(200, text=f"<?xml version='1.0'?><rss><channel><title>t</title>{tag}")
         if "/rss/toppodcasts/" in request.url.path and self.chart_body is not None:
             return httpx.Response(200, text=self.chart_body)
         if "/rss/toppodcasts/" in request.url.path:
@@ -98,6 +98,8 @@ class FakeITunes:
             ][: int(params.get("limit", 10))]
         else:
             ids = [int(i) for i in params["id"].split(",")]
+            if self.fail_lookup_ids & set(ids):
+                return httpx.Response(403)
             results = []
             for s in self.shows:
                 if s["collectionId"] in ids:

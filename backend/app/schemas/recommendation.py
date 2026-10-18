@@ -133,7 +133,9 @@ class RecommendMeta(BaseModel):
     mode: Literal["ai", "catalog_only"]
     llm_model: Optional[str]
     storefront: str
-    llm_candidates: int = Field(..., description="Shows the LLM proposed")
+    pool_size: int = Field(..., description="Real chart shows the LLM chose from")
+    llm_candidates: int = Field(..., description="Shows the LLM proposed (picks + extras)")
+    llm_extras: int = Field(..., description="Shows the LLM proposed from outside the list")
     llm_verified: int = Field(..., description="LLM proposals found in the Apple catalog")
     candidates_considered: int
     dropped_unverified: int = Field(..., description="LLM candidates not found in the catalog")
