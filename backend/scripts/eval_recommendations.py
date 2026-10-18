@@ -12,6 +12,8 @@ For a set of diverse listener profiles it reports, per profile and overall:
                    search failed count as unverified; see catalog errors.)
   * pool / extras  chart shows the LLM chose from, and how many of its own
                    suggestions it added and got verified
+  * ai_top5        share of the returned shows the AI picked (vs. chart order)
+                   — whether the AI step actually shapes the results
   * in length band share of recommendations whose real median episode
                    length falls inside the requested band
   * language ok    share whose feed-declared language matches (unknown feeds
@@ -78,6 +80,10 @@ PROFILES: Dict[str, Dict[str, Any]] = {
                         podcast_duration="long", podcasts_enjoyed="Pardon My Take"),
     "French culture": _p(podcast_content=["arts_culture", "history"], content_language="french",
                          region="europe", podcast_duration="long"),
+    "English, South America": _p(podcast_content=["sports", "news_politics"], region="south_america",
+                                 podcast_duration="medium"),
+    "Telugu movies": _p(podcast_content=["tv_film", "comedy"], content_language="telugu",
+                        region="asia", podcast_duration="any", podcast_format="conversational"),
 }
 
 
@@ -102,6 +108,7 @@ def _metrics(prefs: Dict[str, Any], response: Dict[str, Any], seconds: float) ->
         "pool": meta["pool_size"],
         "extras": f"{meta['llm_verified'] - picks}/{meta['llm_extras']}",
         "llm_verified": meta["llm_verified"] / proposed if proposed else None,
+        "ai_top5": _share([r["source"] == "ai" for r in recs]) if meta["mode"] == "ai" else None,
         "in_band": _share(in_band),
         "language_ok": _share([r["language"] == want_lang for r in recs]),
         "topic_match": _share([r["match"]["breakdown"]["topic"] == 1.0 for r in recs]),
@@ -141,8 +148,8 @@ async def main() -> None:
             print(f"- {name}: {titles}", flush=True)
 
     cols = [
-        "mode", "recs", "pool", "extras", "llm_verified", "in_band", "language_ok", "topic_match",
-        "publishers", "catalog_errors", "seconds",
+        "mode", "recs", "pool", "extras", "llm_verified", "ai_top5", "in_band", "language_ok",
+        "topic_match", "publishers", "catalog_errors", "seconds",
     ]
     print("\n| profile | " + " | ".join(cols) + " |")
     print("|---|" + "---|" * len(cols))

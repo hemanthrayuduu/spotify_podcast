@@ -203,7 +203,8 @@ FIELDS: Dict[str, Field] = {
                 Option("north_america", "North America", storefront="us"),
                 Option("europe", "Europe", storefront="gb"),
                 Option("asia", "Asia", storefront="in"),
-                Option("south_america", "South America", storefront="br"),
+                # Region storefronts are only used for English; Brazil's charts are Portuguese.
+                Option("south_america", "South America", storefront="us"),
                 Option("africa", "Africa", storefront="za"),
                 Option("oceania", "Australia / Oceania", storefront="au"),
             ),

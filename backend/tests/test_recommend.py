@@ -4,6 +4,7 @@ Pipeline under test: chart candidates (real shows) → the AI picks from that
 list and may add up to 2 shows of its own → extras verified in iTunes → ranked.
 """
 
+import json
 from datetime import date
 
 import pytest_asyncio
@@ -108,7 +109,6 @@ async def test_ai_picks_from_the_chart_list_and_adds_verified_extras(make_client
 
 
 async def test_the_ai_only_sees_eligible_chart_shows(make_client):
-    make_client()
     client, _ = make_client()
     await client.post("/recommend", json=VALID_BODY)
     prompt = _prompt(make_client.made["llm"])
@@ -166,20 +166,99 @@ async def test_list_is_capped_per_topic(make_client):
     client, _ = make_client(llm=FakeGroq([choice_json(picks=[(200, "You.")])]), itunes=itunes)
     meta = (await client.post("/recommend", json=VALID_BODY)).json()["meta"]
     assert meta["pool_size"] == 15
-    # 15 chart shows looked up in batches of 10: two calls, not three.
+    # 15 chart shows looked up in batches of 8: two calls.
     assert [r.url.path for r in itunes.requests].count("/lookup") == 2
 
 
-async def test_without_charts_the_ai_suggests_shows_itself(make_client):
-    itunes = FakeITunes(SHOWS, EPISODES, CHARTS)
-    itunes.chart_body = "<html>maintenance</html>"
-    llm = FakeGroq([choice_json(extras=[("Casefile True Crime", "Casefile Presents"),
-                                        ("Crime Junkie", "audiochuck"), ("Criminal", "Phoebe Judge")])])
-    client, _ = make_client(llm=llm, itunes=itunes)
+THREE_EXTRAS = choice_json(extras=[("Casefile True Crime", "Casefile Presents"),
+                                    ("Crime Junkie", "audiochuck"), ("Criminal", "Phoebe Judge")])
+
+
+async def test_with_no_chart_for_the_genre_the_ai_suggests_shows_itself(make_client):
+    itunes = FakeITunes(SHOWS, EPISODES, {1488: []})  # the storefront has no such chart
+    client, _ = make_client(llm=FakeGroq([THREE_EXTRAS]), itunes=itunes)
     data = (await client.post("/recommend", json=VALID_BODY)).json()
     assert data["meta"]["mode"] == "ai"
     assert data["meta"]["pool_size"] == 0
     assert {r["id"] for r in data["recommendations"]} == {101, 102, 104}
+
+
+async def test_catalog_errors_do_not_trigger_a_burst_of_ai_searches(make_client):
+    # Review: a failed chart/lookup used to switch to 8 free-form searches,
+    # piling more calls onto an iTunes API that was already refusing them.
+    itunes = FakeITunes(SHOWS, EPISODES, CHARTS)
+    itunes.chart_body = "<html>maintenance</html>"
+    client, _ = make_client(llm=FakeGroq([THREE_EXTRAS]), itunes=itunes)
+    data = (await client.post("/recommend", json=VALID_BODY)).json()
+    extra_searches = [r for r in itunes.requests
+                      if r.url.path == "/search" and "Serial" not in str(r.url)]
+    assert len(extra_searches) == 2
+    assert data["meta"]["catalog_errors"] >= 1
+
+
+async def test_one_failed_lookup_batch_keeps_the_rest_of_the_list(make_client):
+    many = [show(300 + i, f"Crime Show {i}", f"Publisher {i}", genres=("True Crime",)) for i in range(12)]
+    itunes = FakeITunes(many, {s["collectionId"]: [episode(s["collectionId"], 45)] for s in many},
+                        {1488: [s["collectionId"] for s in many]})
+    itunes.fail_lookup_ids = {311}  # in the second batch of 8
+    client, _ = make_client(llm=FakeGroq([choice_json(picks=[(300, "You.")])]), itunes=itunes)
+    meta = (await client.post("/recommend", json=VALID_BODY)).json()["meta"]
+    assert meta["pool_size"] == 8
+    assert meta["catalog_errors"] >= 1
+    assert meta["mode"] == "ai"
+
+
+async def test_topic_order_does_not_defeat_the_lookup_cache(make_client):
+    history = [show(400 + i, f"History Show {i}", f"Hist Pub {i}", genres=("History",)) for i in range(6)]
+    shows = SHOWS + history
+    episodes = {s["collectionId"]: [episode(s["collectionId"], 45)] for s in shows}
+    itunes = FakeITunes(shows, episodes, {**CHARTS, 1487: [s["collectionId"] for s in history]})
+    client, _ = make_client(llm=None, itunes=itunes)
+    await client.post("/recommend", json={**VALID_BODY, "podcast_content": ["true_crime", "history"]})
+    lookups = [r.url.path for r in itunes.requests].count("/lookup")
+    await client.post("/recommend", json={**VALID_BODY, "podcast_content": ["history", "true_crime"]})
+    assert [r.url.path for r in itunes.requests].count("/lookup") == lookups
+
+
+async def test_chart_shows_in_another_language_never_reach_the_ai(make_client):
+    itunes = FakeITunes(SHOWS, EPISODES, CHARTS, languages={102: "pt", 107: "pt-BR"})
+    client, _ = make_client(itunes=itunes)
+    data = (await client.post("/recommend", json=VALID_BODY)).json()
+    prompt = _prompt(make_client.made["llm"])
+    assert "102 |" not in prompt and "107 |" not in prompt
+    assert "101 |" in prompt
+    assert data["meta"]["dropped_language"] >= 2
+
+
+async def test_a_thin_list_lets_the_ai_suggest_more_of_its_own(make_client):
+    # Telugu/Tamil (and other languages whose storefront charts are mostly in
+    # another language) leave few chart shows; extras make up the difference.
+    # 105 shares 102's publisher, so it only drops out once it's Portuguese too.
+    itunes = FakeITunes(SHOWS, EPISODES, CHARTS, languages={102: "pt", 105: "pt", 107: "pt", 108: "pt"})
+    four_extras = choice_json(picks=[(101, "You.")], extras=[
+        ("Crime Junkie", "audiochuck"), ("Criminal", "Phoebe Judge"),
+        ("Morbid", "Ash Kelley"), ("True Crime Garage", "Nic")])
+    client, _ = make_client(llm=FakeGroq([four_extras]), itunes=itunes)
+    meta = (await client.post("/recommend", json=VALID_BODY)).json()["meta"]
+    assert meta["pool_size"] == 1
+    assert meta["llm_extras"] == 4  # not capped at 2
+
+
+async def test_english_listeners_in_south_america_get_english_charts(make_client):
+    client, _ = make_client(llm=None)
+    data = (await client.post("/recommend", json={**VALID_BODY, "region": "south_america"})).json()
+    assert data["meta"]["storefront"] == "us"
+
+
+async def test_an_empty_ai_answer_still_counts_as_an_answer(make_client):
+    llm = FakeGroq([json.dumps({"picks": [], "extras": []})])
+    client, _ = make_client(llm=llm)
+    first = (await client.post("/recommend", json=VALID_BODY)).json()
+    second = (await client.post("/recommend", json=VALID_BODY)).json()
+    assert first["meta"]["mode"] == "ai"
+    assert first["recommendations"]  # ranked from the list
+    assert second["meta"]["cached"] is True
+    assert len(llm.calls) == 1
 
 
 # --- Catalog-only and failures ---------------------------------------------------
@@ -268,7 +347,8 @@ async def test_shows_in_the_wrong_language_are_dropped(make_client):
     data = (await client.post("/recommend", json={**VALID_BODY, "content_language": "spanish"})).json()
     assert [r["id"] for r in data["recommendations"]] == [102, 107, 108]
     assert all(r["language"] == "es" for r in data["recommendations"])
-    assert data["meta"]["dropped_language"] == 1
+    # Checked before the AI sees the list: 101, 105 and 106 are English.
+    assert data["meta"]["dropped_language"] == 3
 
 
 async def test_confirmed_language_ranks_ahead_of_undeclared(make_client):

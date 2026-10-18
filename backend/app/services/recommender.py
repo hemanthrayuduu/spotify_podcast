@@ -47,9 +47,12 @@ _SEARCH_LIMIT = 8  # same limit for seed and verify searches so they share cache
 _MAX_CHART_TOPICS = 3
 _CHART_DEPTH = 15  # top shows taken from each genre chart
 _POOL_SIZE = 30  # candidates shown to the LLM (~1k prompt tokens)
-_POOL_LOOKUP_CHUNK = 10  # pool lookups: fewer, bigger calls from the iTunes budget
+# Each chart is looked up on its own (15 ids → 8 + 7) so the cached batches are
+# reused whatever the topic order or combination.
+_POOL_LOOKUP_CHUNK = 8
 _POOL_EPISODES = 3  # recent episodes per show: enough for a median length
-_MAX_LOOKUP_IDS = 45
+_MAX_LOOKUP_IDS = _CHART_DEPTH * _MAX_CHART_TOPICS
+_THIN_POOL = 3  # pool shorter than top_n + this → the AI may add more of its own
 _LANGUAGE_BATCH = 12  # feeds checked per parallel batch
 _MAX_CACHE_ENTRIES = 256
 
@@ -118,7 +121,7 @@ class _Run:
         self.band = option("podcast_duration", prefs["podcast_duration"]).minutes
         self.language = language.iso_language
         self.feed_languages: Dict[int, Optional[str]] = {}
-        self.dropped_language = 0
+        self.language_rejected: set = set()
         self.catalog_ok = 0
         self.catalog_failed = 0
         self.llm_failed = False
@@ -142,7 +145,7 @@ class _Run:
         results = await asyncio.gather(*(self._search(n, _SEARCH_LIMIT) for n in names))
         return [m for n, shows in zip(names, results) if shows and (m := match_enjoyed(n, shows))]
 
-    async def _choose(self, pool: List[Candidate]) -> Optional[Choice]:
+    async def _choose(self, pool: List[Candidate], n_extras: int) -> Optional[Choice]:
         if self.rec.llm_client is None:
             return None
         today = self.rec.today()
@@ -162,7 +165,7 @@ class _Run:
         try:
             return await choose_podcasts(
                 self.rec.llm_client, self.labels, self.persona, entries, self.rec.model,
-                n_picks=self.rec.n_picks, n_extras=self.rec.n_extras,
+                n_picks=self.rec.n_picks, n_extras=n_extras,
             )
         except LLMError as exc:
             logger.warning(f"LLM unavailable, using catalog only: {exc}")
@@ -200,12 +203,18 @@ class _Run:
     async def _lookup(self, ids: List[int], **kw: Any) -> Tuple[Dict[int, Show], Dict[int, Any]]:
         if not ids:
             return {}, {}
+        errors: List[CatalogError] = []
         try:
-            result = await self.rec.catalog.lookup(ids[:_MAX_LOOKUP_IDS], self.country, **kw)
+            result = await self.rec.catalog.lookup(
+                ids[:_MAX_LOOKUP_IDS], self.country, errors=errors, **kw
+            )
         except CatalogError as exc:
             logger.warning(f"Lookup failed: {exc}")
             self.catalog_failed += 1
             return {}, {}
+        for exc in errors:  # some batches failed; the rest still count
+            logger.warning(f"Lookup batch failed: {exc}")
+        self.catalog_failed += len(errors)
         self.catalog_ok += 1
         return result
 
@@ -217,8 +226,14 @@ class _Run:
         """Top shows from the Apple genre chart of each chosen topic, with real stats."""
         topics = self.topics[:_MAX_CHART_TOPICS]
         charts = await self._charts()
-        ids = list(dict.fromkeys(i for chart in charts for i in chart))
-        shows, stats = await self._lookup(ids, per_show=_POOL_EPISODES, chunk=_POOL_LOOKUP_CHUNK)
+        looked_up = await asyncio.gather(
+            *(self._lookup(chart, per_show=_POOL_EPISODES, chunk=_POOL_LOOKUP_CHUNK) for chart in charts)
+        )
+        shows: Dict[int, Show] = {}
+        stats: Dict[int, Any] = {}
+        for found, found_stats in looked_up:
+            shows.update(found)
+            stats.update(found_stats)
         candidates = []
         for topic, ids in zip(topics, charts):
             for position, show_id in enumerate(ids):
@@ -256,7 +271,6 @@ class _Run:
         ordered = self._rank(candidates, seeds, top_n=None)
         confirmed: List[Ranked] = []
         undeclared: List[Ranked] = []
-        rejected = set()
         for start in range(0, len(ordered), _LANGUAGE_BATCH):
             batch = ordered[start : start + _LANGUAGE_BATCH]
             await self._languages([r.candidate.show for r in batch])
@@ -267,10 +281,9 @@ class _Run:
                 elif lang == self.language:
                     confirmed.append(r)
                 else:
-                    rejected.add(r.candidate.show.id)
+                    self.language_rejected.add(r.candidate.show.id)
             if len(confirmed) >= self.rec.top_n:
                 break
-        self.dropped_language = len(rejected)
         return (confirmed + undeclared)[: self.rec.top_n]
 
     def _rank(
@@ -291,15 +304,34 @@ class _Run:
             top_n=top_n,
         )
 
-    def _pool(self, charted: List[Candidate], seeds: List[Show]) -> List[Candidate]:
-        """The chart shows worth showing the LLM: eligible, one per publisher, best first."""
-        ordered = self._rank(charted, seeds, top_n=None)
+    async def _pool(self, charted: List[Candidate], seeds: List[Show]) -> List[Candidate]:
+        """The chart shows worth showing the LLM: eligible, in the user's language,
+        one per publisher, best first."""
+        # Storefront charts can be mostly in another language (an English
+        # listener's region store, Telugu in the Indian store), so check feeds
+        # first. Feed reads don't touch the iTunes budget and are cached.
+        await self._languages([c.show for c in charted])
+        in_language = []
+        for c in charted:
+            lang = self.feed_languages.get(c.show.id)
+            if lang is not None and lang != self.language:
+                self.language_rejected.add(c.show.id)
+            else:
+                in_language.append(c)
+        ordered = self._rank(in_language, seeds, top_n=None)
         return [r.candidate for r in ordered][:_POOL_SIZE]
+
+    def _extras_allowed(self, pool: List[Candidate]) -> int:
+        """Up to n_extras; more when the list is thin, unless the catalog is failing
+        (each extra is another iTunes search)."""
+        if self.catalog_failed or len(pool) >= self.rec.top_n + _THIN_POOL:
+            return self.rec.n_extras
+        return max(self.rec.n_extras, self.rec.n_picks - len(pool))
 
     async def execute(self) -> Dict[str, Any]:
         seeds, charted = await asyncio.gather(self._seeds(), self._chart_candidates())
-        pool = self._pool(charted, seeds)
-        choice = await self._choose(pool)
+        pool = await self._pool(charted, seeds)
+        choice = await self._choose(pool, self._extras_allowed(pool))
 
         candidates: List[Candidate] = list(pool)
         dropped = 0
@@ -334,7 +366,7 @@ class _Run:
                 "llm_verified": sum(1 for c in candidates if c.llm_rank is not None),
                 "candidates_considered": len({c.show.id for c in candidates}),
                 "dropped_unverified": dropped,
-                "dropped_language": self.dropped_language,
+                "dropped_language": len(self.language_rejected),
                 "catalog_errors": self.catalog_failed,
                 "segment_model_version": self.rec.segmenter.model_version,
                 "cached": False,

@@ -63,6 +63,7 @@ class FakeITunes:
         self.fail_terms: set = set()  # /search terms that get a 403 (rate limited)
         self.fail_first: Dict[str, int] = {}  # /search term → number of initial 403s
         self.chart_body: Optional[str] = None  # raw body for chart requests
+        self.fail_lookup_ids: set = set()  # /lookup batches containing these ids get a 403
 
     def _params(self, request: httpx.Request) -> Dict[str, str]:
         return {k: v[0] for k, v in parse_qs(request.url.query.decode()).items()}
@@ -97,6 +98,8 @@ class FakeITunes:
             ][: int(params.get("limit", 10))]
         else:
             ids = [int(i) for i in params["id"].split(",")]
+            if self.fail_lookup_ids & set(ids):
+                return httpx.Response(403)
             results = []
             for s in self.shows:
                 if s["collectionId"] in ids:
