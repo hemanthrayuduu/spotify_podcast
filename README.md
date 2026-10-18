@@ -104,41 +104,57 @@ feed, never from the LLM.
 
 1. **Persona.** The user's answers are mapped to a survey persona (see below), which is passed
    to the LLM as context.
-2. **Suggest.** `openai/gpt-oss-120b` on Groq proposes 8 shows (title, host, one-line summary,
-   reason) through strict JSON-schema output.
-3. **Verify.** Each suggestion is searched in the iTunes catalog and fuzzy-matched on title and
-   host (`app/services/catalog.py`). The host check matters because copycat feeds reuse popular
+2. **Candidate list.** Apple's top charts for each chosen topic (up to 3, top 15 each) in the
+   user's storefront. Batched iTunes lookups give each show's real median episode length and
+   last-episode date. Each show's RSS feed is read for the language it declares.
+3. **Filter.** Removed from the list:
+   - shows the user already enjoys, and explicit shows for under-20s;
+   - trailer-only feeds, and shows in another language;
+   - more than one show per publisher.
+
+   The best 30 by the score below are kept.
+4. **The AI picks.** `openai/gpt-oss-120b` on Groq sees that list (title, publisher, genres,
+   real length, recency) and picks up to 8 by id, with a reason for each, through strict
+   JSON-schema output. An id that isn't on the list is ignored, so picks can't be invented.
+
+   It may also suggest up to 2 shows of its own, or more when few listed shows are in the
+   user's language. Each is searched in the iTunes catalog and fuzzy-matched on title and host
+   (`app/services/catalog.py`); the host check matters because copycat feeds reuse popular
    titles. A suggestion with no confident match is dropped and counted in
    `meta.dropped_unverified`.
-4. **Enrich.** Batched iTunes lookups supply the real median episode length and the
-   last-episode date. Each show's RSS feed is read for the language it declares.
-5. **Rank.** A transparent 0–100 score (`app/services/ranking.py`), returned with its breakdown.
+5. **Rank.** A transparent 0–100 score over the list and the verified suggestions
+   (`app/services/ranking.py`), returned with its breakdown.
    - **Score:** topic match on Apple genres (35%), fit of the real episode length to the
-     requested band (30%), LLM endorsement (20%), freshness (15%).
-   - **Filters:** at most one show per publisher; shows the user already enjoys are excluded;
-     no explicit shows for under-20 age groups; no trailer-only feeds; no shows whose feed is
-     in a language other than the one requested.
-6. **Top up / fall back.** If fewer than 5 shows survive, or the LLM is unavailable, picks come
-   from Apple's top charts for the user's topics in their storefront (`meta.mode =
-   "catalog_only"`). Nothing is invented. If the catalog itself is unreachable, the API
+     requested band (30%), AI endorsement (20%), freshness (15%).
+   - **Language:** shows whose feed confirms the requested language come before feeds that
+     declare none.
+6. **Fall back.** If the LLM is unavailable, the list is ranked directly (`meta.mode =
+   "catalog_only"`), so nothing is invented. If the catalog itself is unreachable, the API
    returns 503.
 
 The iTunes API allows roughly 20 calls per minute per IP. Responses are cached (6 h for
 catalog data, 10 min per identical request), concurrency is capped, and lookups are batched.
 
-**Measuring it.** `python -m scripts.eval_recommendations` runs 12 diverse listener profiles
-against the live services. It reports how often the raw LLM suggestions are real shows, and
-how often the returned shows match the requested length, language and topic.
+**Measuring it.** `python -m scripts.eval_recommendations` runs 14 diverse listener profiles
+against live Groq and iTunes, throttled to the production call budget. It reports how often the
+AI's proposals are real shows, how much of the top 5 the AI picked, and how often the returned
+shows match the requested length, language and topic.
 
-Catalog-only mode (no `GROQ_API_KEY`), 2026-10-14:
+Results on 2026-10-17, for the original 12 profiles, comparing the AI naming shows from memory
+with the AI picking from the chart list:
 
-| Metric | Result |
-|---|---|
-| Topic match | 100% |
-| Feed language matches | 92% |
-| Distinct publishers | 5 of 5 |
-| Real episode length in the requested band | 62% |
-| Latency p50 | 1.0 s |
+| Metric | From memory | From the chart list |
+|---|---|---|
+| AI proposals that are real shows | 50% | 98% (list picks are real by construction) |
+| Shown shows verified in Apple's catalog | 100% | 100% |
+| Real episode length in the requested band | 53% | 68% |
+| Feed language matches | 98% | 98% |
+| Topic match | 100% | 100% |
+| Share of the top 5 picked by the AI | — | 58% |
+
+Length misses come from genres whose charts have few shows in the requested band, such as
+short news or extra-long true crime. Languages with few shows in Apple's charts, such as
+Telugu, return fewer than 5 recommendations; the AI declines to invent shows to fill the gap.
 
 ## Listener personas (survey model)
 

@@ -22,6 +22,10 @@ from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
+# Extras the curator may add beyond the list by default; callers allow more
+# only when the list is thin, and the prompt then asks for them outright.
+DEFAULT_EXTRAS = 2
+
 # gpt-oss models reason before answering; reasoning tokens share the completion
 # budget, so a small max_tokens can cut the JSON off mid-object.
 _MAX_COMPLETION_TOKENS = 4096
@@ -210,7 +214,12 @@ def _build_prompt(
             f'- "extras": optionally up to {n_extras} real podcasts that are not in the list and '
             "would fit clearly better than the remaining candidates. Use the exact official title "
             "and host or publisher as listed on Apple Podcasts. Never invent a show; leave "
-            '"extras" empty if unsure.',
+            '"extras" empty if unsure.'
+            if n_extras <= DEFAULT_EXTRAS
+            else f"- The list is short: in \"extras\", add up to {n_extras} real "
+            f"{labels['content_language']} podcasts of your own that fit this listener. Use the "
+            "exact official title and host or publisher as listed on Apple Podcasts. Never invent "
+            "a show.",
         ]
     else:
         lines += [
@@ -270,7 +279,7 @@ async def choose_podcasts(
     pool: Sequence[PoolEntry],
     model: str,
     n_picks: int = 8,
-    n_extras: int = 2,
+    n_extras: int = DEFAULT_EXTRAS,
 ) -> Choice:
     """Have the curator pick from ``pool`` (and add up to ``n_extras`` of its own).
 

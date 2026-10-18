@@ -36,7 +36,14 @@ from app.services.catalog import (
     match_enjoyed,
     same_title,
 )
-from app.services.llm import Choice, LLMError, PoolEntry, Suggestion, choose_podcasts
+from app.services.llm import (
+    DEFAULT_EXTRAS,
+    Choice,
+    LLMError,
+    PoolEntry,
+    Suggestion,
+    choose_podcasts,
+)
 from app.services.ranking import Candidate, Ranked, rank
 
 logger = logging.getLogger(__name__)
@@ -67,7 +74,7 @@ class Recommender:
         *,
         top_n: int = 5,
         n_picks: int = 8,
-        n_extras: int = 2,
+        n_extras: int = DEFAULT_EXTRAS,
         cache_ttl: float = 600,
         today: Callable[[], date] = date.today,
     ):

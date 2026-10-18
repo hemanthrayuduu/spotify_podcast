@@ -263,3 +263,19 @@ async def test_gives_up_after_repeated_refusals():
     with pytest.raises(LLMError):
         await _choose(client)
     assert len(client.calls) == 2
+
+
+async def test_a_thin_list_asks_for_shows_of_its_own_in_the_language():
+    # Live eval: with 3 Telugu shows on the list and room for 5 extras, the
+    # model added none ("optionally" read as "don't bother").
+    client = FakeGroq([VALID])
+    await _choose(client, labels={**LABELS, "content_language": "Telugu"}, n_picks=8, n_extras=5)
+    rules = _prompt(client).split("Rules:")[1]
+    assert "The list is short" in rules
+    assert "up to 5 real Telugu podcasts" in rules
+
+
+async def test_a_full_list_keeps_extras_optional():
+    client = FakeGroq([VALID])
+    await _choose(client, n_picks=8, n_extras=2)
+    assert "The list is short" not in _prompt(client)
