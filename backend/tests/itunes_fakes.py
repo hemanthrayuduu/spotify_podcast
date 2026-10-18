@@ -52,7 +52,7 @@ class FakeITunes:
         shows: List[dict],
         episodes: Optional[Dict[int, List[dict]]] = None,
         charts: Optional[Dict[int, List[int]]] = None,  # genre id → collection ids
-        languages: Optional[Dict[int, str]] = None,  # collection id → feed <language>
+        languages: Optional[Dict[int, Optional[str]]] = None,  # id → feed <language> (None: none)
     ):
         self.shows = shows
         self.episodes = episodes or {}
@@ -80,9 +80,8 @@ class FakeITunes:
         if request.url.host == "feeds.example.com":
             show_id = int(request.url.path.strip("/").split(".")[0])
             language = self.languages.get(show_id, "en-us")
-            return httpx.Response(
-                200, text=f"<?xml version='1.0'?><rss><channel><title>t</title><language>{language}</language>"
-            )
+            tag = f"<language>{language}</language>" if language else ""  # None: undeclared
+            return httpx.Response(200, text=f"<?xml version='1.0'?><rss><channel><title>t</title>{tag}")
         if "/rss/toppodcasts/" in request.url.path and self.chart_body is not None:
             return httpx.Response(200, text=self.chart_body)
         if "/rss/toppodcasts/" in request.url.path:

@@ -271,6 +271,15 @@ async def test_shows_in_the_wrong_language_are_dropped(make_client):
     assert data["meta"]["dropped_language"] == 1
 
 
+async def test_confirmed_language_ranks_ahead_of_undeclared(make_client):
+    # Live eval: Korean results filled up with feeds that declare no language.
+    # They're kept (we can't prove them wrong) but only after confirmed matches.
+    itunes = FakeITunes(SHOWS, EPISODES, CHARTS, languages={102: None, 107: "es", 101: "es", 108: "es"})
+    client, _ = make_client(llm=None, itunes=itunes)
+    data = (await client.post("/recommend", json={**VALID_BODY, "content_language": "spanish"})).json()
+    assert [r["id"] for r in data["recommendations"]] == [107, 101, 108, 102]
+
+
 async def test_recommendations_report_feed_language(make_client):
     client, _ = make_client()
     recs = (await client.post("/recommend", json=VALID_BODY)).json()["recommendations"]

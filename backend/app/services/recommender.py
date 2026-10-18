@@ -248,26 +248,30 @@ class _Run:
     async def _in_language(self, candidates: List[Candidate], seeds: List[Show]) -> List[Ranked]:
         """Best ``top_n`` shows whose feed is in the requested language.
 
-        Feeds are checked in parallel batches, best-ranked first. Feeds that
-        don't declare a language are kept: we can't verify them, and dropping
-        them would punish older feeds rather than wrong ones.
+        Feeds are checked in parallel batches, best-ranked first. Shows whose
+        feed confirms the language come first; feeds that don't declare one
+        are kept but only fill remaining slots: we can't prove them wrong, and
+        dropping them would punish older feeds rather than wrong ones.
         """
         ordered = self._rank(candidates, seeds, top_n=None)
-        kept: List[Ranked] = []
+        confirmed: List[Ranked] = []
+        undeclared: List[Ranked] = []
         rejected = set()
         for start in range(0, len(ordered), _LANGUAGE_BATCH):
             batch = ordered[start : start + _LANGUAGE_BATCH]
             await self._languages([r.candidate.show for r in batch])
             for r in batch:
                 lang = self.feed_languages.get(r.candidate.show.id)
-                if lang is not None and lang != self.language:
+                if lang is None:
+                    undeclared.append(r)
+                elif lang == self.language:
+                    confirmed.append(r)
+                else:
                     rejected.add(r.candidate.show.id)
-                elif len(kept) < self.rec.top_n:
-                    kept.append(r)
-            if len(kept) == self.rec.top_n:
+            if len(confirmed) >= self.rec.top_n:
                 break
         self.dropped_language = len(rejected)
-        return kept
+        return (confirmed + undeclared)[: self.rec.top_n]
 
     def _rank(
         self, candidates: List[Candidate], seeds: List[Show], top_n: Optional[int]
