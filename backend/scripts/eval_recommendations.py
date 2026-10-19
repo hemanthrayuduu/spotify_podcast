@@ -36,7 +36,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.vocabulary import option
-from app.main import _init_llm_client
+from app.main import _init_llm_client, _init_podcast_index
 from app.ml.segmenter import Segmenter
 from app.schemas.recommendation import UserPreferences
 from app.services.catalog import ITunesCatalog, RateBudget
@@ -106,6 +106,7 @@ def _metrics(prefs: Dict[str, Any], response: Dict[str, Any], seconds: float) ->
         "mode": meta["mode"],
         "recs": len(recs),
         "pool": meta["pool_size"],
+        "pi": meta["pi_candidates"],
         "extras": f"{meta['llm_verified'] - picks}/{meta['llm_extras']}",
         "llm_verified": meta["llm_verified"] / proposed if proposed else None,
         "ai_top5": _share([r["source"] == "ai" for r in recs]) if meta["mode"] == "ai" else None,
@@ -137,7 +138,8 @@ async def main() -> None:
             http, budget=RateBudget(settings.itunes_calls_per_minute, max_wait=120)
         )
         recommender = Recommender(
-            Segmenter.load(settings.model_dir), catalog, llm, settings.groq_model, cache_ttl=0
+            Segmenter.load(settings.model_dir), catalog, llm, settings.groq_model,
+            podcast_index=_init_podcast_index(http), cache_ttl=0,
         )
         rows = []
         for name, prefs in PROFILES.items():
@@ -148,7 +150,7 @@ async def main() -> None:
             print(f"- {name}: {titles}", flush=True)
 
     cols = [
-        "mode", "recs", "pool", "extras", "llm_verified", "ai_top5", "in_band", "language_ok",
+        "mode", "recs", "pool", "pi", "extras", "llm_verified", "ai_top5", "in_band", "language_ok",
         "topic_match", "publishers", "catalog_errors", "seconds",
     ]
     print("\n| profile | " + " | ".join(cols) + " |")
@@ -160,8 +162,8 @@ async def main() -> None:
         values = [m[col] for _, m in rows if isinstance(m[col], (int, float))]
         return statistics.mean(values) if values else None
 
-    numeric = cols[4:]  # skip mode, recs, pool, extras
-    print("| **mean** | | | | | " + " | ".join(_fmt(mean(c), c) for c in numeric) + " |")
+    numeric = cols[5:]  # skip mode, recs, pool, pi, extras
+    print("| **mean** | | | | | | " + " | ".join(_fmt(mean(c), c) for c in numeric) + " |")
     latencies = sorted(m["seconds"] for _, m in rows)
     print(f"\nlatency p50 {statistics.median(latencies):.1f}s, max {latencies[-1]:.1f}s")
 

@@ -21,3 +21,8 @@ async def test_health_reports_llm_status(client):
     assert body["llm"]["configured"] is False
     assert body["llm"]["ok"] is False
     assert body["llm"]["model"]
+
+
+async def test_health_reports_whether_podcast_index_is_configured(client):
+    body = (await client.get("/health")).json()
+    assert body["podcast_index"] == {"configured": False}  # tests run without keys

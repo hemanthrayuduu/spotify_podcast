@@ -56,3 +56,11 @@ def test_options_payload_lists_every_field():
 def test_languages_have_iso_codes():
     for option in FIELDS["content_language"].options:
         assert option.iso_language and len(option.iso_language) == 2, option.value
+
+
+def test_topics_map_to_podcast_index_categories():
+    # Category ids from the Podcast Namespace list (podcast-namespace/categories.json).
+    for option in FIELDS["podcast_content"].options:
+        assert option.pi_categories, option.value
+        assert all(1 <= c <= 112 for c in option.pi_categories), option.value
+    assert vocabulary.option("podcast_content", "tv_film").pi_categories == (104, 105)

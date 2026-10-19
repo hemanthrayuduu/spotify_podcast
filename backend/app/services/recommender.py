@@ -4,7 +4,9 @@
     seeds     ← podcasts they already enjoy, resolved in the catalog (excluded,
                 and their genres count toward topic fit)
     pool      ← Apple's genre charts for the user's topics, with real episode
-                lengths; ineligible shows filtered out, best fits kept
+                lengths; ineligible shows filtered out, best fits kept. If few
+                are in the user's language, topped up with Podcast Index's
+                trending shows in that language (only ones also on Apple)
     choose    ← the LLM picks from the pool by id and may add up to 2 shows of
                 its own (extras)
     verify    ← each extra resolved to a real Apple Podcasts show; the rest dropped
@@ -44,6 +46,7 @@ from app.services.llm import (
     Suggestion,
     choose_podcasts,
 )
+from app.services.podcastindex import PodcastIndex, PodcastIndexError
 from app.services.ranking import Candidate, Ranked, rank
 
 logger = logging.getLogger(__name__)
@@ -72,6 +75,7 @@ class Recommender:
         llm_client: Any,
         model: str,
         *,
+        podcast_index: Optional[PodcastIndex] = None,
         top_n: int = 5,
         n_picks: int = 8,
         n_extras: int = DEFAULT_EXTRAS,
@@ -82,6 +86,7 @@ class Recommender:
         self.catalog = catalog
         self.llm_client = llm_client
         self.model = model
+        self.podcast_index = podcast_index
         self.top_n = top_n
         self.n_picks = n_picks
         self.n_extras = n_extras
@@ -132,6 +137,8 @@ class _Run:
         self.catalog_ok = 0
         self.catalog_failed = 0
         self.llm_failed = False
+        self.podcast_index_failed = False
+        self.pi_candidates = 0
 
     async def _search(self, term: str, limit: int) -> Optional[List[Show]]:
         try:
@@ -145,7 +152,7 @@ class _Run:
 
     @property
     def degraded(self) -> bool:
-        return self.catalog_failed > 0 or self.llm_failed
+        return self.catalog_failed > 0 or self.llm_failed or self.podcast_index_failed
 
     async def _seeds(self) -> List[Show]:
         names = self.enjoyed_names
@@ -255,6 +262,47 @@ class _Run:
                     )
         return candidates
 
+    async def _podcast_index_candidates(self, known: set) -> List[Candidate]:
+        """Trending shows in the user's language from Podcast Index, looked up in Apple.
+
+        Only shows with an Apple id are used, so they get the same verified
+        metadata (and Apple links) as chart shows.
+        """
+        topics = self.topics[:_MAX_CHART_TOPICS]
+        try:
+            trending = await asyncio.gather(
+                *(
+                    self.rec.podcast_index.trending(self.language, t.pi_categories, _CHART_DEPTH)
+                    for t in topics
+                )
+            )
+        except PodcastIndexError as exc:
+            logger.warning(f"Podcast Index unavailable: {exc}")
+            self.podcast_index_failed = True
+            return []
+        per_topic = [
+            [s.itunes_id for s in shows if s.itunes_id and s.itunes_id not in known]
+            for shows in trending
+        ]
+        looked_up = await asyncio.gather(
+            *(self._lookup(ids, per_show=_POOL_EPISODES, chunk=_POOL_LOOKUP_CHUNK) for ids in per_topic)
+        )
+        language = self.labels["content_language"]
+        candidates = []
+        for topic, ids, (shows, stats) in zip(topics, per_topic, looked_up):
+            for position, show_id in enumerate(ids):
+                if show_id in shows:
+                    candidates.append(
+                        Candidate(
+                            show=shows[show_id],
+                            stats=stats.get(show_id),
+                            catalog_rank=position,
+                            reason=f"Trending in {language} on Podcast Index ({topic.label}).",
+                        )
+                    )
+        self.pi_candidates = len({c.show.id for c in candidates})
+        return candidates
+
     async def _enrich(self, candidates: List[Candidate]) -> None:
         """Attach real episode stats to shows that lack them (the LLM's verified extras)."""
         _, stats = await self._lookup([c.show.id for c in candidates if c.stats is None])
@@ -338,6 +386,9 @@ class _Run:
     async def execute(self) -> Dict[str, Any]:
         seeds, charted = await asyncio.gather(self._seeds(), self._chart_candidates())
         pool = await self._pool(charted, seeds)
+        if self.rec.podcast_index and len(pool) < self.rec.top_n + _THIN_POOL:
+            charted += await self._podcast_index_candidates({c.show.id for c in charted})
+            pool = await self._pool(charted, seeds)
         choice = await self._choose(pool, self._extras_allowed(pool))
 
         candidates: List[Candidate] = list(pool)
@@ -368,6 +419,7 @@ class _Run:
                 "llm_model": self.rec.model if choice else None,
                 "storefront": self.country,
                 "pool_size": len(pool),
+                "pi_candidates": self.pi_candidates,
                 "llm_candidates": len(choice.picks) + len(choice.extras) if choice else 0,
                 "llm_extras": len(choice.extras) if choice else 0,
                 "llm_verified": sum(1 for c in candidates if c.llm_rank is not None),

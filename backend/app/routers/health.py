@@ -19,4 +19,8 @@ async def health(request: Request):
         "models_loaded": segmenter is not None,
         "segment_model_version": segmenter.model_version if segmenter else None,
         "llm": getattr(request.app.state, "llm_status", None),
+        "podcast_index": {
+            "configured": getattr(getattr(request.app.state, "recommender", None), "podcast_index", None)
+            is not None
+        },
     }

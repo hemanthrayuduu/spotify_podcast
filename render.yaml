@@ -19,6 +19,11 @@ services:
       # Secret — set the value in the Render dashboard (never commit it).
       - key: GROQ_API_KEY
         sync: false
+      # Optional: Podcast Index language search (set in the dashboard).
+      - key: PODCASTINDEX_API_KEY
+        sync: false
+      - key: PODCASTINDEX_API_SECRET
+        sync: false
       # llama-3.3-70b-versatile was retired by Groq on 2026-08-16.
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b

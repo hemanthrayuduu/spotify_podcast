@@ -18,6 +18,7 @@ from app.ml.segmenter import Segmenter
 from app.routers import health, options, recommend
 from app.services.catalog import ITunesCatalog, RateBudget
 from app.services.llm import check_model
+from app.services.podcastindex import PodcastIndex
 from app.services.recommender import Recommender
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,13 @@ def _init_llm_client() -> Optional[AsyncGroq]:
         return None
     logger.info(f"Groq client initialized (model={settings.groq_model}).")
     return AsyncGroq(api_key=settings.groq_api_key, timeout=30.0, max_retries=2)
+
+
+def _init_podcast_index(http: httpx.AsyncClient) -> Optional[PodcastIndex]:
+    if not (settings.podcastindex_api_key and settings.podcastindex_api_secret):
+        logger.info("Podcast Index keys not set; thin language lists won't be topped up.")
+        return None
+    return PodcastIndex(http, settings.podcastindex_api_key, settings.podcastindex_api_secret)
 
 
 @asynccontextmanager
@@ -51,6 +59,7 @@ async def lifespan(app: FastAPI):
         ),
         llm_client=app.state.llm_client,
         model=settings.groq_model,
+        podcast_index=_init_podcast_index(http),
         cache_ttl=settings.response_cache_ttl_s,
     )
     try:

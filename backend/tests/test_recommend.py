@@ -12,9 +12,11 @@ import pytest_asyncio
 from app.core.config import settings
 from app.main import app
 from app.services.catalog import ITunesCatalog
+from app.services.podcastindex import PodcastIndex
 from app.services.recommender import Recommender
 from tests.itunes_fakes import FakeITunes, episode, show
 from tests.llm_fakes import FakeGroq, choice_json
+from tests.podcastindex_fakes import FakePodcastIndex, feed
 
 VALID_BODY = {
     "age": "20_34",
@@ -64,7 +66,7 @@ async def make_client(client):
     original = app.state.recommender
     made = {}
 
-    def _make(llm="default", itunes=None):
+    def _make(llm="default", itunes=None, pi=None):
         llm = FakeGroq([LLM_OUTPUT]) if llm == "default" else llm
         itunes = itunes or FakeITunes(SHOWS, EPISODES, CHARTS)
         app.state.recommender = Recommender(
@@ -72,6 +74,7 @@ async def make_client(client):
             catalog=ITunesCatalog(itunes.client(), retry_delay=0),
             llm_client=llm,
             model=settings.groq_model,
+            podcast_index=PodcastIndex(pi.client(), key="K", secret="S") if pi else None,
             today=lambda: date(2026, 10, 14),
         )
         made["llm"] = llm
@@ -259,6 +262,72 @@ async def test_an_empty_ai_answer_still_counts_as_an_answer(make_client):
     assert first["recommendations"]  # ranked from the list
     assert second["meta"]["cached"] is True
     assert len(llm.calls) == 1
+
+
+# --- Podcast Index: language search for thin lists ----------------------------------
+
+TELUGU = [
+    show(501, "Telugu True Crime Katha", "Katha Media", genres=("True Crime",)),
+    show(502, "Nijam Crime Stories", "Nijam Podcasts", genres=("True Crime",)),
+    show(503, "Crime Diaries Telugu", "Diaries Network", genres=("True Crime",)),
+]
+TELUGU_BODY = {**VALID_BODY, "content_language": "telugu", "region": "asia", "podcasts_enjoyed": ""}
+TELUGU_FEEDS = [
+    feed(1, "Telugu True Crime Katha", 501),
+    feed(2, "No Apple Listing", None),  # not on Apple Podcasts: skipped
+    feed(3, "Nijam Crime Stories", 502),
+    feed(4, "Casefile True Crime", 101),  # already in the chart
+    feed(5, "Crime Diaries Telugu", 503),
+]
+
+
+def _telugu_itunes():
+    shows = SHOWS + TELUGU
+    episodes = {s["collectionId"]: [episode(s["collectionId"], 45)] for s in shows}
+    # The Indian store's True Crime chart is all English, so the Telugu list is empty.
+    return FakeITunes(shows, episodes, CHARTS, languages={501: "te", 502: "te", 503: "te"})
+
+
+async def test_thin_language_lists_are_topped_up_from_podcast_index(make_client):
+    pi = FakePodcastIndex(TELUGU_FEEDS)
+    client, _ = make_client(llm=None, itunes=_telugu_itunes(), pi=pi)
+    data = (await client.post("/recommend", json=TELUGU_BODY)).json()
+    recs = data["recommendations"]
+    assert {r["id"] for r in recs} == {501, 502, 503}
+    assert all(r["language"] == "te" for r in recs)
+    assert all("Podcast Index" in r["reason"] for r in recs)
+    assert data["meta"]["pi_candidates"] == 3  # no Apple listing, and the chart duplicate, skipped
+    url = str(pi.requests[0].url)
+    assert "lang=te" in url and "cat=103" in url  # True Crime
+
+
+async def test_podcast_index_shows_reach_the_ai(make_client):
+    pi = FakePodcastIndex(TELUGU_FEEDS)
+    client, _ = make_client(itunes=_telugu_itunes(), pi=pi)
+    await client.post("/recommend", json=TELUGU_BODY)
+    prompt = _prompt(make_client.made["llm"])
+    assert "501 | Telugu True Crime Katha" in prompt
+
+
+async def test_podcast_index_is_not_called_when_the_list_is_full(make_client):
+    pi = FakePodcastIndex(TELUGU_FEEDS)
+    many = [show(600 + i, f"Crime Show {i}", f"Publisher {i}", genres=("True Crime",)) for i in range(10)]
+    itunes = FakeITunes(many, {s["collectionId"]: [episode(s["collectionId"], 45)] for s in many},
+                        {1488: [s["collectionId"] for s in many]})
+    client, _ = make_client(llm=None, itunes=itunes, pi=pi)
+    data = (await client.post("/recommend", json=VALID_BODY)).json()
+    assert pi.requests == []
+    assert data["meta"]["pi_candidates"] == 0
+
+
+async def test_a_podcast_index_outage_degrades_gracefully(make_client):
+    pi = FakePodcastIndex(TELUGU_FEEDS)
+    pi.fail_with = 503
+    client, _ = make_client(llm=None, itunes=_telugu_itunes(), pi=pi)
+    first = await client.post("/recommend", json=TELUGU_BODY)
+    second = (await client.post("/recommend", json=TELUGU_BODY)).json()
+    assert first.status_code == 200
+    assert second["meta"]["cached"] is False  # retried next time, not served stale
 
 
 # --- Catalog-only and failures ---------------------------------------------------

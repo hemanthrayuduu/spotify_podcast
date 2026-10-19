@@ -6,6 +6,8 @@ import os
 # which would make the app call Groq at startup. Environment variables take
 # precedence over .env in pydantic-settings, so blank it before app import.
 os.environ["GROQ_API_KEY"] = ""
+os.environ["PODCASTINDEX_API_KEY"] = ""
+os.environ["PODCASTINDEX_API_SECRET"] = ""
 
 import httpx  # noqa: E402
 import pytest_asyncio  # noqa: E402

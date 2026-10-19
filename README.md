@@ -79,6 +79,9 @@ The backend reads configuration from environment variables (see `.env.example`):
 - `GROQ_API_KEY` — enables LLM recommendations; falls back to a static list if unset.
 - `GROQ_MODEL` — Groq model (default `openai/gpt-oss-120b`). The model is checked at startup; `GET /health` reports `llm.ok` and the error if it is unavailable.
 - `ALLOWED_ORIGINS` — comma-separated CORS origins; set to your frontend URL in production.
+- `PODCASTINDEX_API_KEY` / `PODCASTINDEX_API_SECRET` — optional, free from
+  [Podcast Index](https://api.podcastindex.org/signup). They enable language search for thin
+  non-English lists; `GET /health` reports `podcast_index.configured`.
 
 ## Docker
 
@@ -107,6 +110,10 @@ feed, never from the LLM.
 2. **Candidate list.** Apple's top charts for each chosen topic (up to 3, top 15 each) in the
    user's storefront. Batched iTunes lookups give each show's real median episode length and
    last-episode date. Each show's RSS feed is read for the language it declares.
+   If few of them are in the user's language (Telugu in the Indian store, for instance) and
+   Podcast Index keys are configured, the list is topped up with Podcast Index's trending
+   shows in that language and topic. Only shows that are also on Apple Podcasts are added, so
+   they get the same Apple metadata and links.
 3. **Filter.** Removed from the list:
    - shows the user already enjoys, and explicit shows for under-20s;
    - trailer-only feeds, and shows in another language;
