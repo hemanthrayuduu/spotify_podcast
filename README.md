@@ -144,22 +144,23 @@ against live Groq and iTunes, throttled to the production call budget. It report
 AI's proposals are real shows, how much of the top 5 the AI picked, and how often the returned
 shows match the requested length, language and topic.
 
-Results on 2026-10-17, for the original 12 profiles, comparing the AI naming shows from memory
-with the AI picking from the chart list:
+Results on 2026-10-19, for the original 12 profiles, comparing the AI naming shows from memory
+with the AI picking from the candidate list:
 
-| Metric | From memory | From the chart list |
+| Metric | From memory | From the candidate list |
 |---|---|---|
 | AI proposals that are real shows | 50% | 98% (list picks are real by construction) |
 | Shown shows verified in Apple's catalog | 100% | 100% |
-| Real episode length in the requested band | 53% | 68% |
-| Feed language matches | 98% | 98% |
+| Real episode length in the requested band | 53% | 70% |
+| Feed language matches | 98% | 100% |
 | Topic match | 100% | 100% |
-| Share of the top 5 picked by the AI | — | 58% |
+| Share of the top 5 picked by the AI | — | 67% |
 
 Length misses come from genres whose charts have few shows in the requested band, such as
 short news or extra-long true crime. Languages with few chart shows are topped up by language
-search: a Telugu TV & film + comedy request went from 3 recommendations to 5, all with feeds
-declaring Telugu.
+search. The Telugu and Hindi profiles now return 5 recommendations each, with every feed
+declaring the requested language. Before, Telugu returned 3, and Hindi got no AI picks at all
+because the chart list had too few Hindi shows.
 
 ## Listener personas (survey model)
 
