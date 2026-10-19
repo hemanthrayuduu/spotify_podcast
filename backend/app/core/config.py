@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
 
     # Podcast Index (free key + secret at https://api.podcastindex.org/signup).
-    # Optional: without them, thin non-English lists aren't topped up.
+    # Optional: without them, thin candidate lists (usually non-English) aren't topped up.
     podcastindex_api_key: str = ""
     podcastindex_api_secret: str = ""
     # llama-3.3-70b-versatile was retired by Groq on 2026-08-16; gpt-oss-120b is

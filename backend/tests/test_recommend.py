@@ -272,12 +272,13 @@ TELUGU = [
     show(503, "Crime Diaries Telugu", "Diaries Network", genres=("True Crime",)),
 ]
 TELUGU_BODY = {**VALID_BODY, "content_language": "telugu", "region": "asia", "podcasts_enjoyed": ""}
+CRIME = {"103": "True Crime"}
 TELUGU_FEEDS = [
-    feed(1, "Telugu True Crime Katha", 501),
-    feed(2, "No Apple Listing", None),  # not on Apple Podcasts: skipped
-    feed(3, "Nijam Crime Stories", 502),
-    feed(4, "Casefile True Crime", 101),  # already in the chart
-    feed(5, "Crime Diaries Telugu", 503),
+    feed(1, "Telugu True Crime Katha", 501, categories=CRIME),
+    feed(2, "No Apple Listing", None, categories=CRIME),  # not on Apple Podcasts: skipped
+    feed(3, "Nijam Crime Stories", 502, categories=CRIME),
+    feed(4, "Casefile True Crime", 101, categories=CRIME),  # already in the chart
+    feed(5, "Crime Diaries Telugu", 503, categories=CRIME),
 ]
 
 
@@ -318,6 +319,36 @@ async def test_podcast_index_is_not_called_when_the_list_is_full(make_client):
     data = (await client.post("/recommend", json=VALID_BODY)).json()
     assert pi.requests == []
     assert data["meta"]["pi_candidates"] == 0
+
+
+async def test_podcast_index_is_skipped_while_apple_is_failing(make_client):
+    # Review: with iTunes rate limiting, the top-up added up to 12 more iTunes calls.
+    pi = FakePodcastIndex(TELUGU_FEEDS)
+    itunes = _telugu_itunes()
+    itunes.fail_with = 403
+    client, _ = make_client(llm=None, itunes=itunes, pi=pi)
+    response = await client.post("/recommend", json=TELUGU_BODY)
+    assert response.status_code == 503
+    assert pi.requests == []
+
+
+async def test_shows_trending_in_several_topics_are_added_once(make_client):
+    comedy_too = show(504, "Navvula Navvulu", "Navvu Media", genres=("Comedy",))
+    shows = SHOWS + TELUGU + [comedy_too]
+    episodes = {s["collectionId"]: [episode(s["collectionId"], 45)] for s in shows}
+    itunes = FakeITunes(shows, episodes, CHARTS, languages={501: "te", 502: "te", 503: "te", 504: "te"})
+    pi = FakePodcastIndex([
+        feed(1, "Telugu True Crime Katha", 501, categories=CRIME),
+        feed(3, "Nijam Crime Stories", 502, categories={**CRIME, "16": "Comedy"}),  # in both topics
+        feed(6, "Navvula Navvulu", 504, categories={"16": "Comedy"}),
+    ])
+    client, _ = make_client(llm=None, itunes=itunes, pi=pi)
+    body = {**TELUGU_BODY, "podcast_content": ["true_crime", "comedy"]}
+    data = (await client.post("/recommend", json=body)).json()
+    assert data["meta"]["pi_candidates"] == 3
+    looked_up = [i for r in itunes.requests if r.url.path == "/lookup"
+                 for i in r.url.params["id"].split(",") if i.startswith("50")]
+    assert sorted(looked_up) == ["501", "502", "504"]  # 502 only once
 
 
 async def test_a_podcast_index_outage_degrades_gracefully(make_client):

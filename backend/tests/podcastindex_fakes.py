@@ -29,14 +29,22 @@ class FakePodcastIndex:
         self.feeds = feeds
         self.requests: List[httpx.Request] = []
         self.fail_with: Optional[int] = None
+        self.raw_body: Optional[str] = None  # returned verbatim when set
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         if self.fail_with:
             return httpx.Response(self.fail_with, text="nope")
+        if self.raw_body is not None:
+            return httpx.Response(200, text=self.raw_body)
         params = {k: v[0] for k, v in parse_qs(request.url.query.decode()).items()}
-        langs = params.get("lang", "").split(",")
-        feeds = [f for f in self.feeds if f["language"] in langs][: int(params.get("max", 10))]
+        # Case-insensitive *exact* match on the raw feed value ("te-IN" needs "te-in").
+        langs = {lang.lower() for lang in params.get("lang", "").split(",")}
+        cats = {c for c in params.get("cat", "").split(",") if c}  # any of them
+        feeds = [
+            f for f in self.feeds
+            if str(f["language"]).lower() in langs and (not cats or cats & set(f["categories"]))
+        ][: int(params.get("max", 10))]
         return httpx.Response(200, text=json.dumps({"status": "true", "feeds": feeds, "count": len(feeds)}))
 
     def client(self) -> httpx.AsyncClient:

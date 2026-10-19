@@ -80,8 +80,8 @@ The backend reads configuration from environment variables (see `.env.example`):
 - `GROQ_MODEL` — Groq model (default `openai/gpt-oss-120b`). The model is checked at startup; `GET /health` reports `llm.ok` and the error if it is unavailable.
 - `ALLOWED_ORIGINS` — comma-separated CORS origins; set to your frontend URL in production.
 - `PODCASTINDEX_API_KEY` / `PODCASTINDEX_API_SECRET` — optional, free from
-  [Podcast Index](https://api.podcastindex.org/signup). They enable language search for thin
-  non-English lists; `GET /health` reports `podcast_index.configured`.
+  [Podcast Index](https://api.podcastindex.org/signup). They enable language search when the
+  candidate list is thin (usually for non-English requests); `GET /health` reports `podcast_index.configured`.
 
 ## Docker
 

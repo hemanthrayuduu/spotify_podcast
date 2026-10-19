@@ -1,6 +1,7 @@
 """Tests for the Podcast Index client (language-filtered trending shows)."""
 
 import hashlib
+import json
 
 import httpx
 import pytest
@@ -53,3 +54,27 @@ async def test_errors_raise_podcast_index_error():
     garbage = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, text="<html>")))
     with pytest.raises(PodcastIndexError):
         await PodcastIndex(garbage, key="K", secret="S").trending("te", [104])
+
+
+async def test_region_tagged_feeds_are_found():
+    # Feeds declare "te-IN", "es-MX"...; the API matches the raw value, so ask for variants.
+    fake = FakePodcastIndex([feed(1, "Telugu Show", 111, language="te-IN"),
+                             feed(2, "Plain Telugu", 222, language="te")])
+    shows = await _pi(fake).trending("te", [104], region="in")
+    assert {s.feed_id for s in shows} == {1, 2}
+    assert all(s.language == "te" for s in shows)
+
+
+async def test_widely_spoken_languages_ask_for_common_regions():
+    business = {"9": "Business"}
+    fake = FakePodcastIndex([feed(1, "Mexico", 111, language="es-MX", categories=business),
+                             feed(2, "LatAm", 222, language="es-419", categories=business)])
+    shows = await _pi(fake).trending("es", [9], region="es")
+    assert {s.feed_id for s in shows} == {1, 2}
+
+
+async def test_malformed_feeds_are_skipped_not_fatal():
+    fake = FakePodcastIndex([])
+    fake.raw_body = json.dumps({"feeds": [{"id": "abc", "itunesId": 5}, feed(2, "Good", 222)]})
+    shows = await _pi(fake).trending("te", [104])
+    assert [s.feed_id for s in shows] == [2]

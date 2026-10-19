@@ -269,21 +269,31 @@ class _Run:
         metadata (and Apple links) as chart shows.
         """
         topics = self.topics[:_MAX_CHART_TOPICS]
-        try:
-            trending = await asyncio.gather(
-                *(
-                    self.rec.podcast_index.trending(self.language, t.pi_categories, _CHART_DEPTH)
-                    for t in topics
+        outcomes = await asyncio.gather(
+            *(
+                self.rec.podcast_index.trending(
+                    self.language, t.pi_categories, _CHART_DEPTH, region=self.country
                 )
-            )
-        except PodcastIndexError as exc:
-            logger.warning(f"Podcast Index unavailable: {exc}")
-            self.podcast_index_failed = True
-            return []
-        per_topic = [
-            [s.itunes_id for s in shows if s.itunes_id and s.itunes_id not in known]
-            for shows in trending
-        ]
+                for t in topics
+            ),
+            return_exceptions=True,
+        )
+        trending = []
+        for outcome in outcomes:  # one topic failing doesn't discard the others
+            if isinstance(outcome, PodcastIndexError):
+                logger.warning(f"Podcast Index unavailable: {outcome}")
+                self.podcast_index_failed = True
+                trending.append([])
+            elif isinstance(outcome, BaseException):
+                raise outcome
+            else:
+                trending.append(outcome)
+        seen = set(known)
+        per_topic = []
+        for shows in trending:  # a show trending in two topics is looked up once
+            ids = [s.itunes_id for s in shows if s.itunes_id and s.itunes_id not in seen]
+            seen.update(ids)
+            per_topic.append(ids)
         looked_up = await asyncio.gather(
             *(self._lookup(ids, per_show=_POOL_EPISODES, chunk=_POOL_LOOKUP_CHUNK) for ids in per_topic)
         )
@@ -386,7 +396,9 @@ class _Run:
     async def execute(self) -> Dict[str, Any]:
         seeds, charted = await asyncio.gather(self._seeds(), self._chart_candidates())
         pool = await self._pool(charted, seeds)
-        if self.rec.podcast_index and len(pool) < self.rec.top_n + _THIN_POOL:
+        # Not while iTunes is failing: every added show costs more iTunes lookups.
+        thin = len(pool) < self.rec.top_n + _THIN_POOL
+        if self.rec.podcast_index and thin and not self.catalog_failed:
             charted += await self._podcast_index_candidates({c.show.id for c in charted})
             pool = await self._pool(charted, seeds)
         choice = await self._choose(pool, self._extras_allowed(pool))

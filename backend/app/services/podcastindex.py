@@ -26,6 +26,27 @@ USER_AGENT = "spotify-podcast-recommender/2.0"
 _MAX_CACHE_ENTRIES = 512
 
 
+# Feeds declare raw RSS language values ("te-IN", "es-MX") and the API matches
+# them exactly (case-insensitively), so ask for common regional variants too.
+_REGIONAL_VARIANTS = {
+    "en": ("en-us", "en-gb", "en-in", "en-au", "en-ca"),
+    "es": ("es-es", "es-mx", "es-us", "es-419", "es-ar", "es-co"),
+    "pt": ("pt-br", "pt-pt"),
+    "fr": ("fr-fr", "fr-ca", "fr-be"),
+    "de": ("de-de", "de-at", "de-ch"),
+    "zh": ("zh-cn", "zh-tw", "zh-hk", "zh-hans", "zh-hant"),
+    "ar": ("ar-sa", "ar-eg", "ar-ae", "ar-ma"),
+}
+
+
+def lang_param(language: str, region: Optional[str] = None) -> str:
+    """``te`` + ``in`` → ``te,te-in``; widely spoken languages get their common regions."""
+    variants = [language, *_REGIONAL_VARIANTS.get(language, ())]
+    if region and f"{language}-{region}" not in variants:
+        variants.append(f"{language}-{region}")
+    return ",".join(variants)
+
+
 class PodcastIndexError(Exception):
     """Podcast Index refused the request or returned something unusable."""
 
@@ -66,11 +87,16 @@ class PodcastIndex:
         }
 
     async def trending(
-        self, language: str, categories: Sequence[int], max_results: int = 15
+        self,
+        language: str,
+        categories: Sequence[int],
+        max_results: int = 15,
+        region: Optional[str] = None,
     ) -> List[TrendingShow]:
-        """Trending shows whose feed declares ``language`` (ISO 639-1), in any of ``categories``."""
+        """Trending shows whose feed declares ``language`` (ISO 639-1, plus regional
+        variants such as ``te-in``), in any of ``categories``."""
         params: Dict[str, Any] = {
-            "lang": language,
+            "lang": lang_param(language, region),
             "cat": ",".join(str(c) for c in categories),
             "max": max_results,
         }
@@ -80,7 +106,7 @@ class PodcastIndex:
             return hit[1]
         try:
             response = await self._http.get(
-                f"{BASE_URL}/podcasts/trending", params=params, headers=self._headers(), timeout=8.0
+                f"{BASE_URL}/podcasts/trending", params=params, headers=self._headers(), timeout=4.0
             )
         except httpx.HTTPError as exc:
             raise PodcastIndexError(f"trending request failed: {exc}") from exc
@@ -95,15 +121,20 @@ class PodcastIndex:
         for f in feeds if isinstance(feeds, list) else []:
             if not isinstance(f, dict) or not f.get("id"):
                 continue
-            itunes_id = f.get("itunesId")
-            shows.append(
-                TrendingShow(
-                    feed_id=int(f["id"]),
-                    itunes_id=int(itunes_id) if isinstance(itunes_id, int) and itunes_id > 0 else None,
-                    title=str(f.get("title") or ""),
-                    language=normalize_language(str(f.get("language") or "")) if f.get("language") else None,
+            try:  # one malformed feed shouldn't sink the request
+                itunes_id = f.get("itunesId")
+                shows.append(
+                    TrendingShow(
+                        feed_id=int(f["id"]),
+                        itunes_id=itunes_id
+                        if isinstance(itunes_id, int) and not isinstance(itunes_id, bool) and itunes_id > 0
+                        else None,
+                        title=str(f.get("title") or ""),
+                        language=normalize_language(str(f["language"])) if f.get("language") else None,
+                    )
                 )
-            )
+            except (TypeError, ValueError):
+                continue
         if len(self._cache) >= _MAX_CACHE_ENTRIES:
             self._cache.pop(next(iter(self._cache)))
         self._cache[key] = (time.monotonic() + self._cache_ttl, shows)
