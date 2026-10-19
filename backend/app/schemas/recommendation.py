@@ -133,7 +133,10 @@ class RecommendMeta(BaseModel):
     mode: Literal["ai", "catalog_only"]
     llm_model: Optional[str]
     storefront: str
-    pool_size: int = Field(..., description="Real chart shows the LLM chose from")
+    pool_size: int = Field(..., description="Real candidate shows ranked (and shown to the LLM)")
+    search_candidates: int = Field(
+        ..., description="Candidates added by language search when the chart list was thin"
+    )
     llm_candidates: int = Field(..., description="Shows the LLM proposed (picks + extras)")
     llm_extras: int = Field(..., description="Shows the LLM proposed from outside the list")
     llm_verified: int = Field(..., description="LLM proposals found in the Apple catalog")

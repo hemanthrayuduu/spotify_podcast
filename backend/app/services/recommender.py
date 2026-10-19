@@ -4,7 +4,9 @@
     seeds     ← podcasts they already enjoy, resolved in the catalog (excluded,
                 and their genres count toward topic fit)
     pool      ← Apple's genre charts for the user's topics, with real episode
-                lengths; ineligible shows filtered out, best fits kept
+                lengths; ineligible shows filtered out, best fits kept. If few
+                are in a non-English user's language, topped up by searching
+                Apple's catalog for "<language> <topic>" (e.g. "Telugu comedy")
     choose    ← the LLM picks from the pool by id and may add up to 2 shows of
                 its own (extras)
     verify    ← each extra resolved to a real Apple Podcasts show; the rest dropped
@@ -132,6 +134,7 @@ class _Run:
         self.catalog_ok = 0
         self.catalog_failed = 0
         self.llm_failed = False
+        self.search_candidates = 0
 
     async def _search(self, term: str, limit: int) -> Optional[List[Show]]:
         try:
@@ -255,6 +258,43 @@ class _Run:
                     )
         return candidates
 
+    async def _language_search_candidates(self, known: set) -> List[Candidate]:
+        """Shows found by searching Apple for "<language> <topic>", with real stats.
+
+        Apple's charts are per storefront, not per language, so a Telugu
+        listener in the Indian store gets mostly English and Hindi chart shows.
+        A plain-English search like "Telugu comedy" finds Telugu shows; their
+        feeds' declared language is checked afterwards like any candidate's.
+        """
+        topics = self.topics[:_MAX_CHART_TOPICS]
+        language = self.labels["content_language"]
+        found = await asyncio.gather(
+            *(self._search(f"{language} {t.search_term}", _CHART_DEPTH) for t in topics)
+        )
+        seen = set(known)
+        per_topic = []
+        for shows in found:  # a show found for two topics is looked up once
+            ids = [s.id for s in shows or [] if s.id not in seen]
+            seen.update(ids)
+            per_topic.append(ids)
+        looked_up = await asyncio.gather(
+            *(self._lookup(ids, per_show=_POOL_EPISODES, chunk=_POOL_LOOKUP_CHUNK) for ids in per_topic)
+        )
+        candidates = []
+        for topic, ids, (shows, stats) in zip(topics, per_topic, looked_up):
+            for position, show_id in enumerate(ids):
+                if show_id in shows:
+                    candidates.append(
+                        Candidate(
+                            show=shows[show_id],
+                            stats=stats.get(show_id),
+                            catalog_rank=position,
+                            reason=f"A {language} {topic.label} show found by Apple Podcasts search.",
+                        )
+                    )
+        self.search_candidates = len({c.show.id for c in candidates})
+        return candidates
+
     async def _enrich(self, candidates: List[Candidate]) -> None:
         """Attach real episode stats to shows that lack them (the LLM's verified extras)."""
         _, stats = await self._lookup([c.show.id for c in candidates if c.stats is None])
@@ -338,6 +378,12 @@ class _Run:
     async def execute(self) -> Dict[str, Any]:
         seeds, charted = await asyncio.gather(self._seeds(), self._chart_candidates())
         pool = await self._pool(charted, seeds)
+        # Not for English (a thin English list means a thin topic, not a missing
+        # language) and not while iTunes is failing (each search costs more calls).
+        thin = len(pool) < self.rec.top_n + _THIN_POOL
+        if thin and self.language != "en" and not self.catalog_failed:
+            charted += await self._language_search_candidates({c.show.id for c in charted})
+            pool = await self._pool(charted, seeds)
         choice = await self._choose(pool, self._extras_allowed(pool))
 
         candidates: List[Candidate] = list(pool)
@@ -368,6 +414,7 @@ class _Run:
                 "llm_model": self.rec.model if choice else None,
                 "storefront": self.country,
                 "pool_size": len(pool),
+                "search_candidates": self.search_candidates,
                 "llm_candidates": len(choice.picks) + len(choice.extras) if choice else 0,
                 "llm_extras": len(choice.extras) if choice else 0,
                 "llm_verified": sum(1 for c in candidates if c.llm_rank is not None),

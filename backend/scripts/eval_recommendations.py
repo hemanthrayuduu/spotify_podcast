@@ -10,7 +10,9 @@ For a set of diverse listener profiles it reports, per profile and overall:
                    the chart list are real by construction; extras (its own
                    suggestions) are verified in Apple's catalog. (Extras whose
                    search failed count as unverified; see catalog errors.)
-  * pool / extras  chart shows the LLM chose from, and how many of its own
+  * pool / search  candidate shows the LLM chose from; how many came from
+                   language search (thin non-English chart lists)
+  * extras         how many of its own
                    suggestions it added and got verified
   * ai_top5        share of the returned shows the AI picked (vs. chart order)
                    — whether the AI step actually shapes the results
@@ -106,6 +108,7 @@ def _metrics(prefs: Dict[str, Any], response: Dict[str, Any], seconds: float) ->
         "mode": meta["mode"],
         "recs": len(recs),
         "pool": meta["pool_size"],
+        "search": meta["search_candidates"],
         "extras": f"{meta['llm_verified'] - picks}/{meta['llm_extras']}",
         "llm_verified": meta["llm_verified"] / proposed if proposed else None,
         "ai_top5": _share([r["source"] == "ai" for r in recs]) if meta["mode"] == "ai" else None,
@@ -148,7 +151,7 @@ async def main() -> None:
             print(f"- {name}: {titles}", flush=True)
 
     cols = [
-        "mode", "recs", "pool", "extras", "llm_verified", "ai_top5", "in_band", "language_ok",
+        "mode", "recs", "pool", "search", "extras", "llm_verified", "ai_top5", "in_band", "language_ok",
         "topic_match", "publishers", "catalog_errors", "seconds",
     ]
     print("\n| profile | " + " | ".join(cols) + " |")
@@ -160,8 +163,8 @@ async def main() -> None:
         values = [m[col] for _, m in rows if isinstance(m[col], (int, float))]
         return statistics.mean(values) if values else None
 
-    numeric = cols[4:]  # skip mode, recs, pool, extras
-    print("| **mean** | | | | | " + " | ".join(_fmt(mean(c), c) for c in numeric) + " |")
+    numeric = cols[5:]  # skip mode, recs, pool, search, extras
+    print("| **mean** | | | | | | " + " | ".join(_fmt(mean(c), c) for c in numeric) + " |")
     latencies = sorted(m["seconds"] for _, m in rows)
     print(f"\nlatency p50 {statistics.median(latencies):.1f}s, max {latencies[-1]:.1f}s")
 

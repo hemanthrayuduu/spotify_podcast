@@ -261,6 +261,98 @@ async def test_an_empty_ai_answer_still_counts_as_an_answer(make_client):
     assert len(llm.calls) == 1
 
 
+# --- Language search for thin non-English lists --------------------------------------
+
+TELUGU = [
+    show(501, "Telugu True Crime Katha", "Katha Media", genres=("True Crime",)),
+    show(502, "Nijam Telugu Crime Stories", "Nijam Podcasts", genres=("True Crime",)),
+    show(503, "Crime Diaries Telugu", "Diaries Network", genres=("True Crime",)),
+]
+TELUGU_BODY = {**VALID_BODY, "content_language": "telugu", "region": "asia", "podcasts_enjoyed": ""}
+
+
+def _telugu_itunes(extra=(), languages=None):
+    shows = SHOWS + TELUGU + list(extra)
+    episodes = {s["collectionId"]: [episode(s["collectionId"], 45)] for s in shows}
+    # The Indian store's True Crime chart is all English, so the Telugu list is empty.
+    return FakeITunes(shows, episodes, CHARTS, languages=languages or {501: "te", 502: "te", 503: "te"})
+
+
+def _language_searches(itunes):
+    return [r.url.params["term"] for r in itunes.requests
+            if r.url.path == "/search" and r.url.params["term"] != "Serial"]
+
+
+async def test_thin_language_lists_are_topped_up_by_searching_apple(make_client):
+    itunes = _telugu_itunes()
+    client, _ = make_client(llm=None, itunes=itunes)
+    data = (await client.post("/recommend", json=TELUGU_BODY)).json()
+    recs = data["recommendations"]
+    assert {r["id"] for r in recs} == {501, 502, 503}  # English crime shows found too, but dropped
+    assert all(r["language"] == "te" for r in recs)
+    assert all("Apple Podcasts search" in r["reason"] for r in recs)
+    assert data["meta"]["search_candidates"] == 3
+    assert _language_searches(itunes) == ["Telugu crime"]
+
+
+async def test_language_search_results_reach_the_ai(make_client):
+    client, _ = make_client(itunes=_telugu_itunes())
+    await client.post("/recommend", json=TELUGU_BODY)
+    assert "501 | Telugu True Crime Katha" in _prompt(make_client.made["llm"])
+
+
+async def test_no_language_search_when_the_list_is_full(make_client):
+    many = [show(600 + i, f"Crime Show {i}", f"Publisher {i}", genres=("True Crime",)) for i in range(10)]
+    itunes = FakeITunes(many, {s["collectionId"]: [episode(s["collectionId"], 45)] for s in many},
+                        {1488: [s["collectionId"] for s in many]},
+                        languages={s["collectionId"]: "te" for s in many})
+    client, _ = make_client(llm=None, itunes=itunes)
+    data = (await client.post("/recommend", json=TELUGU_BODY)).json()
+    assert _language_searches(itunes) == []
+    assert data["meta"]["search_candidates"] == 0
+
+
+async def test_no_language_search_for_english(make_client):
+    # A thin English list means the topic is thin, not the language; "English crime"
+    # would only add noise.
+    itunes = FakeITunes(SHOWS, EPISODES, {1488: [101]})
+    client, _ = make_client(llm=None, itunes=itunes)
+    await client.post("/recommend", json=VALID_BODY)
+    assert _language_searches(itunes) == []
+
+
+async def test_no_language_search_while_apple_is_failing(make_client):
+    itunes = _telugu_itunes()
+    itunes.fail_with = 403
+    client, _ = make_client(llm=None, itunes=itunes)
+    response = await client.post("/recommend", json=TELUGU_BODY)
+    assert response.status_code == 503
+    assert _language_searches(itunes) == []
+
+
+async def test_shows_found_for_several_topics_are_added_once(make_client):
+    comedy = show(504, "Telugu Comedy Nights", "Navvu Media", genres=("Comedy",))
+    itunes = _telugu_itunes(extra=[comedy], languages={501: "te", 502: "te", 503: "te", 504: "te"})
+    client, _ = make_client(llm=None, itunes=itunes)
+    body = {**TELUGU_BODY, "podcast_content": ["true_crime", "comedy"]}
+    data = (await client.post("/recommend", json=body)).json()
+    assert sorted(_language_searches(itunes)) == ["Telugu comedy", "Telugu crime"]
+    assert data["meta"]["search_candidates"] == 4
+    looked_up = [i for r in itunes.requests if r.url.path == "/lookup"
+                 for i in r.url.params["id"].split(",") if i.startswith("50")]
+    assert sorted(looked_up) == ["501", "502", "503", "504"]  # each looked up once
+
+
+async def test_a_failed_language_search_degrades_gracefully(make_client):
+    itunes = _telugu_itunes()
+    itunes.fail_terms = {"Telugu crime"}
+    client, _ = make_client(llm=None, itunes=itunes)
+    first = await client.post("/recommend", json=TELUGU_BODY)
+    second = (await client.post("/recommend", json=TELUGU_BODY)).json()
+    assert first.status_code == 200
+    assert second["meta"]["cached"] is False  # retried next time, not served stale
+
+
 # --- Catalog-only and failures ---------------------------------------------------
 
 

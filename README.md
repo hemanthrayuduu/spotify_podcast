@@ -107,6 +107,10 @@ feed, never from the LLM.
 2. **Candidate list.** Apple's top charts for each chosen topic (up to 3, top 15 each) in the
    user's storefront. Batched iTunes lookups give each show's real median episode length and
    last-episode date. Each show's RSS feed is read for the language it declares.
+   Apple's charts are per storefront, not per language. If few chart shows are in a
+   non-English user's language (Telugu in the Indian store, for instance), the list is topped
+   up by searching Apple's catalog for "<language> <topic>", e.g. "Telugu comedy". Each
+   result's feed must confirm the language.
 3. **Filter.** Removed from the list:
    - shows the user already enjoys, and explicit shows for under-20s;
    - trailer-only feeds, and shows in another language;
@@ -153,8 +157,9 @@ with the AI picking from the chart list:
 | Share of the top 5 picked by the AI | — | 58% |
 
 Length misses come from genres whose charts have few shows in the requested band, such as
-short news or extra-long true crime. Languages with few shows in Apple's charts, such as
-Telugu, return fewer than 5 recommendations; the AI declines to invent shows to fill the gap.
+short news or extra-long true crime. Languages with few chart shows are topped up by language
+search: a Telugu TV & film + comedy request went from 3 recommendations to 5, all with feeds
+declaring Telugu.
 
 ## Listener personas (survey model)
 
