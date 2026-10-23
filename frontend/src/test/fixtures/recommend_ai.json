@@ -176,6 +176,7 @@
     "llm_model": "openai/gpt-oss-120b",
     "storefront": "gb",
     "pool_size": 24,
+    "search_candidates": 0,
     "llm_candidates": 8,
     "llm_extras": 1,
     "llm_verified": 7,

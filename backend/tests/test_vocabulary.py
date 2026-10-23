@@ -56,3 +56,9 @@ def test_options_payload_lists_every_field():
 def test_languages_have_iso_codes():
     for option in FIELDS["content_language"].options:
         assert option.iso_language and len(option.iso_language) == 2, option.value
+
+
+def test_topics_have_a_short_search_term_for_language_search():
+    # "Telugu comedy" finds Telugu shows in Apple's catalog; long labels don't search well.
+    for option in FIELDS["podcast_content"].options:
+        assert option.search_term and len(option.search_term.split()) <= 2, option.value
